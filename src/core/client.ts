@@ -7,7 +7,7 @@ import {
   BackoffBaseMs,
   BackoffMultiplier,
 } from './config';
-import { APIError, AuthError, RateLimitError, SDKError } from './errors';
+import { APIError, AuthError, RateLimitError, SDKError, ThreatWindsError } from './errors';
 
 export interface ClientConfig {
   baseUrl?: string;
@@ -22,6 +22,37 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
   queryParams?: Record<string, string>;
+  /** Caller-controlled cancellation, combined with the client timeout. */
+  signal?: AbortSignal;
+  /**
+   * Overrides the client timeout for this call. Streaming completions can run
+   * far longer than the 30s default.
+   */
+  timeout?: number;
+}
+
+/**
+ * Combines the caller's signal with a timeout so either can abort the request.
+ * `AbortSignal.any` is not available on every supported runtime, hence the
+ * manual wiring.
+ */
+function combineSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+  const active = signals.filter((s): s is AbortSignal => Boolean(s));
+  if (active.length === 0) return undefined;
+  if (active.length === 1) return active[0];
+
+  const controller = new AbortController();
+  const abort = (reason: unknown) => {
+    if (!controller.signal.aborted) controller.abort(reason);
+  };
+  for (const signal of active) {
+    if (signal.aborted) {
+      abort(signal.reason);
+      break;
+    }
+    signal.addEventListener('abort', () => abort(signal.reason), { once: true });
+  }
+  return controller.signal;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -144,7 +175,10 @@ export class ThreatWindsClient {
     const init: RequestInit = {
       method,
       headers,
-      signal: AbortSignal.timeout(this.timeout),
+      signal: combineSignals([
+        AbortSignal.timeout(options.timeout ?? this.timeout),
+        options.signal,
+      ]),
     };
 
     if (options.body) {
@@ -176,6 +210,88 @@ export class ThreatWindsClient {
       return JSON.parse(respBody);
     } catch {
       return respBody;
+    }
+  }
+
+  /**
+   * Issues a request and yields decoded server-sent events as they arrive.
+   * Never retried: a partially consumed stream cannot be replayed safely.
+   *
+   * Yields the raw `data:` payload of each event, with the terminal `[DONE]`
+   * sentinel already filtered out.
+   */
+  async *stream(
+    method: string,
+    path: string,
+    options: RequestOptions = {},
+  ): AsyncGenerator<string, void, unknown> {
+    const url = buildUrl(this.baseUrl, path, options.queryParams);
+    const headers: Record<string, string> = {
+      'User-Agent': UserAgent,
+      'Accept': 'text/event-stream',
+      ...options.headers,
+    };
+
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    this.applyAuth(headers);
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      // Streams are long-lived; the per-request timeout is opt-in here rather
+      // than inheriting the short default.
+      signal: combineSignals([
+        options.timeout ? AbortSignal.timeout(options.timeout) : undefined,
+        options.signal,
+      ]),
+    });
+
+    if (response.status >= 400) {
+      const respBody = await response.text();
+      const message = response.headers.get('X-Error') || respBody || '';
+      const errorId = response.headers.get('X-Error-Id') || '';
+      const retryAfter = response.headers.get('Retry-After') || '';
+      try {
+        this.createError(response.status, method, path, message, errorId, retryAfter, JSON.parse(respBody));
+      } catch (err) {
+        if (err instanceof ThreatWindsError) throw err;
+        this.createError(response.status, method, path, message, errorId, retryAfter, respBody);
+      }
+    }
+
+    if (!response.body) {
+      throw new SDKError('server returned an empty response stream');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Keep the trailing fragment: an event may be split across chunks.
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          yield payload;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+      await response.body.cancel().catch(() => undefined);
     }
   }
 
