@@ -17,6 +17,7 @@ import { BillingClient } from './billing/billing-client';
 import { AuthClient } from './auth/auth-client';
 import { FeedsClient } from './feeds/feeds-client';
 import { IngestClient } from './ingest/ingest-client';
+import { CaseworkClient } from './casework/casework-client';
 
 // Core exports
 export {
@@ -38,6 +39,7 @@ export {
   BillingClient,
   FeedsClient,
   IngestClient,
+  CaseworkClient,
 };
 
 // Billing types
@@ -180,3 +182,20 @@ export {
   LiveFeedOptions,
   LiveFeedSubscription,
 } from './analytics/analytics-types';
+
+// Casework types
+export {
+  CaseStatus,
+  CaseSeverity,
+  Case,
+  CaseNote,
+  CaseEntity,
+  CaseInput,
+  PinEntityInput,
+  MatchKind,
+  Watchlist,
+  WatchlistItem,
+  WatchlistInput,
+  WatchlistItemInput,
+  SavedSearch,
+} from './casework/casework-types';
