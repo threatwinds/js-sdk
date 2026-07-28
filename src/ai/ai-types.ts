@@ -154,3 +154,33 @@ export interface EmbeddingsResponse {
   model: string;
   usage?: Usage;
 }
+
+/** Speech-to-text request. */
+export interface TranscriptionRequest {
+  /** Recorded audio. */
+  audio: Blob;
+  /** Filename sent in the multipart part; only the extension matters. */
+  filename?: string;
+  model?: string;
+  /** ISO-639-1 hint. Improves accuracy and latency when known. */
+  language?: string;
+  /** Biases the decoder — useful for domain vocabulary and a wake word. */
+  prompt?: string;
+}
+
+export interface TranscriptionResponse {
+  text: string;
+}
+
+export type SpeechFormat = 'mp3' | 'wav' | 'flac' | 'pcm';
+
+/** Text-to-speech request. */
+export interface SpeechRequest {
+  input: string;
+  model?: string;
+  /** Kokoro voice id, e.g. `af_heart`. */
+  voice?: string;
+  responseFormat?: SpeechFormat;
+  /** 0.5–2.0. */
+  speed?: number;
+}

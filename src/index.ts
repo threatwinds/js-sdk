@@ -200,4 +200,31 @@ export {
   SavedSearch,
   Alert,
   AlertPage,
+  UNFILED,
+  Conversation,
+  ConversationInput,
+  Turn,
+  // The AI client already exports a `ToolCall`: a model's *request* to call a
+  // tool, carrying an id and a `function.arguments` payload. This one is
+  // casework's record of a call that already ran, stored on a turn as a bare
+  // name and args. Different shapes at different points in the lifecycle, so
+  // the casework type is aliased at the package root rather than merged.
+  ToolCall as ConversationToolCall,
 } from './casework/casework-types';
+
+// AI warm-up policy — the self-hosted generation pods scale to zero, so any
+// call can be answered with a retryable 503 while a model boots.
+export {
+  withWarmup,
+  retryStreamWarmup,
+  warmupDecision,
+  DEFAULT_WARMUP_BUDGET_SECONDS,
+  NO_BACKENDS_GRACE_SECONDS,
+} from './ai/warmup';
+export type { WarmupOptions, WarmupProgress } from './ai/warmup';
+export type {
+  TranscriptionRequest,
+  TranscriptionResponse,
+  SpeechRequest,
+  SpeechFormat,
+} from './ai/ai-types';

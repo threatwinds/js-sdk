@@ -158,6 +158,63 @@ export class ThreatWindsClient {
     throw lastError[lastError.length - 1];
   }
 
+  /**
+   * Issues one request and returns the raw outcome without interpreting the
+   * status.
+   *
+   * The AI generation endpoints run on pods that scale to zero and answer a
+   * cold request with a 503 the caller must retry rather than surface. Those
+   * callers need the status and headers (notably Retry-After) before any error
+   * is thrown, which `request` cannot give them. Also accepts a body that is
+   * already encoded — multipart audio uploads are not JSON.
+   */
+  async rawRequest(
+    method: string,
+    path: string,
+    // Typed explicitly rather than as DOM's BodyInit: the package targets
+    // ES2020 without the DOM lib, so that name is not in scope here.
+    options: RequestOptions & {
+      rawBody?: FormData | string | ArrayBuffer | Uint8Array;
+      accept?: string;
+    } = {},
+  ): Promise<{ status: number; headers: Headers; body: ArrayBuffer }> {
+    const url = buildUrl(this.baseUrl, path, options.queryParams);
+    const headers: Record<string, string> = {
+      'User-Agent': UserAgent,
+      Accept: options.accept ?? 'application/json',
+      ...options.headers,
+    };
+
+    // FormData sets its own multipart boundary; forcing a Content-Type here
+    // would produce a body the server cannot parse.
+    if (options.body !== undefined && options.rawBody === undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    this.applyAuth(headers);
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body:
+        options.rawBody !== undefined
+          ? (options.rawBody as never)
+          : options.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
+      signal: combineSignals([
+        AbortSignal.timeout(options.timeout ?? this.timeout),
+        options.signal,
+      ]),
+    });
+
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: await response.arrayBuffer(),
+    };
+  }
+
   private async requestOnce(method: string, path: string, options: RequestOptions = {}): Promise<unknown> {
     const url = buildUrl(this.baseUrl, path, options.queryParams);
     const headers: Record<string, string> = {
