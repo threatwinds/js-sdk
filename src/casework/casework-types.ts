@@ -93,3 +93,34 @@ export interface SavedSearch {
   query: string;
   createdAt: string;
 }
+
+/**
+ * One watchlist rule firing on one entity.
+ *
+ * Written by the alerting worker, never by a client. Entity type and value are
+ * denormalised so an alert still reads if the entity later stops resolving —
+ * the worker has already checked that the recipient is permitted to see it.
+ */
+export interface Alert {
+  id: number;
+  createdAt: string;
+  watchlistId: string;
+  itemId: string;
+  entityId: string;
+  entityType: string;
+  entityValue: string;
+  reputation: number;
+  /** Which rule kind fired: entity, value, tag or type. */
+  matchedKind: MatchKind;
+  /** The specific key that matched. */
+  matchedOn: string;
+}
+
+export interface AlertPage {
+  items: Alert[];
+  /**
+   * Alerts newer than the caller's read watermark. Independent of `items`,
+   * which may be filtered or truncated.
+   */
+  unread: number;
+}

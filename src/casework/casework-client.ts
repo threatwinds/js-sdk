@@ -1,5 +1,7 @@
 import { ThreatWindsClient, RequestOptions } from '../core/client';
 import {
+  Alert,
+  AlertPage,
   Case,
   CaseEntity,
   CaseInput,
@@ -111,6 +113,26 @@ function toWatchlist(raw: unknown): Watchlist {
     createdAt: str(w, 'created_at', 'createdAt'),
     updatedAt: str(w, 'updated_at', 'updatedAt'),
     items: asArray(w.items).map(toItem),
+  };
+}
+
+function toAlert(raw: unknown): Alert {
+  const a = asRecord(raw);
+  const kind = str(a, 'matched_kind', 'matchedKind');
+  return {
+    id: num(a, 'id'),
+    createdAt: str(a, 'created_at', 'createdAt'),
+    watchlistId: str(a, 'watchlist_id', 'watchlistId'),
+    itemId: str(a, 'item_id', 'itemId'),
+    entityId: str(a, 'entity_id', 'entityId'),
+    entityType: str(a, 'entity_type', 'entityType'),
+    entityValue: str(a, 'entity_value', 'entityValue'),
+    reputation: num(a, 'reputation'),
+    matchedKind:
+      kind === 'entity' || kind === 'value' || kind === 'tag' || kind === 'type'
+        ? (kind as MatchKind)
+        : 'value',
+    matchedOn: str(a, 'matched_on', 'matchedOn'),
   };
 }
 
@@ -276,6 +298,37 @@ export class CaseworkClient {
       `${BASE}/watchlists/${encodeURIComponent(watchlistId)}/items/${encodeURIComponent(itemId)}`,
       options,
     );
+  }
+
+  /**
+   * Alerts newest first, with the caller's unread count.
+   *
+   * Unread is computed server-side from a read watermark, so it stays correct
+   * regardless of what this page happens to contain.
+   */
+  async listAlerts(
+    { limit = 50, unreadOnly = false }: { limit?: number; unreadOnly?: boolean } = {},
+    options: RequestOptions = {},
+  ): Promise<AlertPage> {
+    const raw = asRecord(
+      await this.client.request('GET', `${BASE}/alerts`, {
+        ...options,
+        queryParams: {
+          ...options.queryParams,
+          limit: String(limit),
+          unread: String(unreadOnly),
+        },
+      }),
+    );
+    return {
+      items: asArray(raw.items).map(toAlert),
+      unread: num(raw, 'unread'),
+    };
+  }
+
+  /** Advances the caller's read watermark to now. */
+  async markAlertsRead(options: RequestOptions = {}): Promise<void> {
+    await this.client.request('POST', `${BASE}/alerts/read`, options);
   }
 
   async listSavedSearches(options: RequestOptions = {}): Promise<SavedSearch[]> {

@@ -198,4 +198,6 @@ export {
   WatchlistInput,
   WatchlistItemInput,
   SavedSearch,
+  Alert,
+  AlertPage,
 } from './casework/casework-types';
