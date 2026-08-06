@@ -106,9 +106,6 @@ export class ThreatWindsClient {
     const hasAPIKey = config.apiKey && config.apiSecret;
     const hasBearer = config.bearer;
 
-    if (!hasAPIKey && !hasBearer) {
-      throw new SDKError('authentication required: provide apiKey/apiSecret or bearer');
-    }
     if (hasAPIKey && hasBearer) {
       throw new SDKError('conflicting authentication: use apiKey/apiSecret or bearer, not both');
     }
