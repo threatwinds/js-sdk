@@ -46,6 +46,50 @@ export interface CreateCustomerResponse {
   message: string
 }
 
+/** Membership role within a customer account. Billing actions require `owner`. */
+export type CustomerRole = 'owner' | 'admin' | 'user'
+
+export interface CustomerMember {
+  roleID: string
+  userID: string
+  role: CustomerRole
+}
+
+export interface CustomerMembersPage {
+  members: CustomerMember[]
+  pages: number
+  items: number
+}
+
+/** The caller's current plan, and whether a trial is still on the table. */
+export interface CustomerTier {
+  customerId: string
+  tierId: string
+  tierName: string
+  description: string
+  isActive: boolean
+  /** `active`, `trialing`, `past_due`, `canceled`, `unpaid`, … */
+  subscriptionStatus: string
+  stacks: number
+  /** Once true the 30-day trial is spent; upgrading then bills immediately. */
+  trialUsed: boolean
+}
+
+export interface UpgradeToProRequest {
+  /** Stripe returns the browser here on success. */
+  successURL: string
+  /** …and here if the checkout is abandoned. */
+  cancelURL: string
+}
+
+export interface UpgradeToProResponse {
+  checkoutURL: string
+}
+
+export interface CustomerPortalSession {
+  url: string
+}
+
 export interface LimitDefinition {
   value: number
   /** e.g. "minute", "month". */

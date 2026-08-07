@@ -57,6 +57,13 @@ export type {
   BillingAddress,
   CreateCustomerRequest,
   CreateCustomerResponse,
+  CustomerRole,
+  CustomerMember,
+  CustomerMembersPage,
+  CustomerTier,
+  UpgradeToProRequest,
+  UpgradeToProResponse,
+  CustomerPortalSession,
 } from './billing/billing-types';
 
 // AI types

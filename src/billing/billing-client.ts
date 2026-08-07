@@ -5,6 +5,11 @@ import {
   CreateCustomerRequest,
   CreateCustomerResponse,
   Customer,
+  CustomerMembersPage,
+  CustomerPortalSession,
+  CustomerTier,
+  UpgradeToProRequest,
+  UpgradeToProResponse,
   QuotaReport,
   ServiceLimits,
   TierLimits,
@@ -53,6 +58,53 @@ export class BillingClient {
       ...options,
       body: request,
     }) as Promise<CreateCustomerResponse>;
+  }
+
+  /**
+   * The caller's plan, subscription status and whether the trial is still
+   * available — everything needed to decide between offering a trial, an
+   * upgrade, or a link to manage an existing subscription.
+   */
+  async getCustomerTier(options: RequestOptions = {}): Promise<CustomerTier> {
+    return this.client.request('GET', `${BASE}/customer/tier`, options) as Promise<CustomerTier>;
+  }
+
+  /**
+   * Starts a Stripe Checkout session for the Pro plan.
+   *
+   * There is no separate "start trial" call: the API applies a 30-day trial
+   * automatically when the customer has not used one, so this is both the
+   * trial and the upgrade entry point.
+   *
+   * Owner only — anyone else gets 403.
+   */
+  async upgradeToPro(
+    request: UpgradeToProRequest,
+    options: RequestOptions = {},
+  ): Promise<UpgradeToProResponse> {
+    return this.client.request('POST', `${BASE}/stripe/upgrade`, {
+      ...options,
+      body: request,
+    }) as Promise<UpgradeToProResponse>;
+  }
+
+  /**
+   * A short-lived Stripe billing portal link, where the customer manages
+   * payment method, invoices and cancellation. Owner only.
+   */
+  async startCustomerPortal(options: RequestOptions = {}): Promise<CustomerPortalSession> {
+    return this.client.request('GET', `${BASE}/stripe/customer`, options) as Promise<CustomerPortalSession>;
+  }
+
+  /**
+   * Members of the caller's customer account.
+   *
+   * Owner and admin only, so a 403 here is itself the answer to "am I allowed
+   * to manage billing" — the session's own `roles` are auth roles and say
+   * nothing about the billing account.
+   */
+  async listMembers(options: RequestOptions = {}): Promise<CustomerMembersPage> {
+    return this.client.request('GET', `${BASE}/customer/members`, options) as Promise<CustomerMembersPage>;
   }
 
   /** Limit definitions for every service on the caller's tier. */
