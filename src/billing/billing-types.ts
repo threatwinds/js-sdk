@@ -14,6 +14,38 @@ export interface Customer {
   gcid?: string
 }
 
+/**
+ * Billing address for a customer.
+ *
+ * Every field is required by the API, and the whole address is forwarded to
+ * Stripe as the customer's address — so these are real billing details, not
+ * metadata that can be filled with placeholders.
+ */
+export interface BillingAddress {
+  street: string
+  city: string
+  state: string
+  postalCode: string
+  /**
+   * ISO 3166-1 alpha-2, uppercase. The API validates against its own table and
+   * rejects anything else with a 400 naming the `country` field, so a spelled
+   * out country name will not be accepted.
+   */
+  country: string
+}
+
+export interface CreateCustomerRequest {
+  email: string
+  /** Billing entity name, e.g. "Acme Corp". Becomes the Stripe customer name. */
+  name: string
+  billingAddress: BillingAddress
+}
+
+/** `POST /customer` acknowledges; it does not return the created customer. */
+export interface CreateCustomerResponse {
+  message: string
+}
+
 export interface LimitDefinition {
   value: number
   /** e.g. "minute", "month". */

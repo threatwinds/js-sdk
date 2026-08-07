@@ -760,6 +760,35 @@ interface Customer {
     /** Payment-provider customer id (Stripe). */
     gcid?: string;
 }
+/**
+ * Billing address for a customer.
+ *
+ * Every field is required by the API, and the whole address is forwarded to
+ * Stripe as the customer's address — so these are real billing details, not
+ * metadata that can be filled with placeholders.
+ */
+interface BillingAddress {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    /**
+     * ISO 3166-1 alpha-2, uppercase. The API validates against its own table and
+     * rejects anything else with a 400 naming the `country` field, so a spelled
+     * out country name will not be accepted.
+     */
+    country: string;
+}
+interface CreateCustomerRequest {
+    email: string;
+    /** Billing entity name, e.g. "Acme Corp". Becomes the Stripe customer name. */
+    name: string;
+    billingAddress: BillingAddress;
+}
+/** `POST /customer` acknowledges; it does not return the created customer. */
+interface CreateCustomerResponse {
+    message: string;
+}
 interface LimitDefinition {
     value: number;
     /** e.g. "minute", "month". */
@@ -830,7 +859,18 @@ declare class BillingClient {
     constructor(client: ThreatWindsClient);
     /** Returns `null` when the caller has no customer record yet. */
     getCustomer(options?: RequestOptions): Promise<Customer | null>;
-    createCustomer(options?: RequestOptions): Promise<Customer>;
+    /**
+     * Creates the caller's customer record.
+     *
+     * Signing a user up does not create one, so a new account has none until this
+     * is called and its first metered request would otherwise fail. The request
+     * body is mandatory — this previously sent none and the API answered
+     * `400 invalid JSON body: EOF`.
+     *
+     * Fails with `412` when the caller already belongs to a customer, so this is
+     * safe to call defensively: it cannot produce a duplicate.
+     */
+    createCustomer(request: CreateCustomerRequest, options?: RequestOptions): Promise<CreateCustomerResponse>;
     /** Limit definitions for every service on the caller's tier. */
     getLimits(options?: RequestOptions): Promise<TierLimits>;
     /** Limit definitions for one service, e.g. `ai-api`. */
@@ -1540,4 +1580,4 @@ declare function detectIndicatorTypes(raw: string): IndicatorType[];
 /** Convenience wrapper returning only the single most likely type. */
 declare function detectIndicatorType(raw: string): IndicatorType | null;
 
-export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, BillingClient, type Bool, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type Customer, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type EmbeddingsRequest, type EmbeddingsResponse, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type Customer, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type EmbeddingsRequest, type EmbeddingsResponse, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };

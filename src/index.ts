@@ -54,6 +54,9 @@ export type {
   QuotaReport,
   AddMemberRequest,
   TransferOwnershipRequest,
+  BillingAddress,
+  CreateCustomerRequest,
+  CreateCustomerResponse,
 } from './billing/billing-types';
 
 // AI types

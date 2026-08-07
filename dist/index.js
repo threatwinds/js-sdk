@@ -1058,8 +1058,22 @@ var BillingClient = class {
       throw err;
     }
   }
-  async createCustomer(options = {}) {
-    return this.client.request("POST", `${BASE2}/customer`, options);
+  /**
+   * Creates the caller's customer record.
+   *
+   * Signing a user up does not create one, so a new account has none until this
+   * is called and its first metered request would otherwise fail. The request
+   * body is mandatory — this previously sent none and the API answered
+   * `400 invalid JSON body: EOF`.
+   *
+   * Fails with `412` when the caller already belongs to a customer, so this is
+   * safe to call defensively: it cannot produce a duplicate.
+   */
+  async createCustomer(request, options = {}) {
+    return this.client.request("POST", `${BASE2}/customer`, {
+      ...options,
+      body: request
+    });
   }
   /** Limit definitions for every service on the caller's tier. */
   async getLimits(options = {}) {
