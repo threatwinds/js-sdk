@@ -230,3 +230,21 @@ export interface Turn {
    */
   seq: number;
 }
+
+/** One window in a conversation's canvas. Geometry is in CSS pixels. */
+export interface CanvasPanel {
+  id: string;
+  kind: string;
+  title: string;
+  ref: string;
+  z: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  minimised?: boolean;
+}
+
+export interface CanvasPayload {
+  panels: CanvasPanel[];
+}

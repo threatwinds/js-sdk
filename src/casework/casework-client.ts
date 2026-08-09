@@ -2,6 +2,8 @@ import { ThreatWindsClient, RequestOptions } from '../core/client';
 import {
   Alert,
   AlertPage,
+  CanvasPanel,
+  CanvasPayload,
   Case,
   CaseEntity,
   CaseInput,
@@ -453,6 +455,37 @@ export class CaseworkClient {
 
   async deleteSavedSearch(id: string, options: RequestOptions = {}): Promise<void> {
     await this.client.request('DELETE', `${BASE}/searches/${encodeURIComponent(id)}`, options);
+  }
+
+  /**
+   * The analyst's panel arrangement for a conversation.
+   *
+   * An unset canvas comes back as an empty array rather than an error — every
+   * conversation starts without one.
+   */
+  async getCanvas(conversationId: string, options: RequestOptions = {}): Promise<CanvasPanel[]> {
+    const raw = (await this.client.request(
+      'GET',
+      `${BASE}/conversations/${encodeURIComponent(conversationId)}/canvas`,
+      options,
+    )) as CanvasPayload | null;
+    return raw?.panels ?? [];
+  }
+
+  /**
+   * Replaces the arrangement wholesale. The server caps this at 24 panels and
+   * 64KB and rejects unknown panel kinds.
+   */
+  async putCanvas(
+    conversationId: string,
+    panels: CanvasPanel[],
+    options: RequestOptions = {},
+  ): Promise<void> {
+    await this.client.request(
+      'PUT',
+      `${BASE}/conversations/${encodeURIComponent(conversationId)}/canvas`,
+      { ...options, body: { panels } },
+    );
   }
 
   /**

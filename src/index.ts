@@ -200,6 +200,8 @@ export {
 export {
   CaseStatus,
   CaseSeverity,
+  CanvasPanel,
+  CanvasPayload,
   Case,
   CaseNote,
   CaseEntity,
