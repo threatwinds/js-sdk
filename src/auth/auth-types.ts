@@ -124,3 +124,27 @@ export interface VerificationSession extends Partial<VerificationState> {
   status: VerificationStatus;
   url?: string;
 }
+
+/** One address attached to an account. `id` is what delete and set-preferred take. */
+export interface Email {
+  id: string;
+  address: string;
+  verified: boolean;
+  preferred: boolean;
+}
+
+/** `POST /email` confirms nothing by itself — the address is pending until verified. */
+export interface CreateEmailResponse {
+  verificationCodeID: string;
+}
+
+/**
+ * Confirms a pending email or key pair.
+ *
+ * The `verificationCodeID` is issued once by the create call and cannot be
+ * re-requested; there is no resend endpoint.
+ */
+export interface VerificationCodeRequest {
+  verificationCodeID: string;
+  code: string;
+}

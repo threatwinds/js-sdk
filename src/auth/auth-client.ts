@@ -2,6 +2,8 @@ import { ThreatWindsClient, RequestOptions } from '../core/client';
 import { APIError } from '../core/errors';
 import {
   Acknowledgement,
+  CreateEmailResponse,
+  Email,
   KeyPair,
   KeyPairRequest,
   SessionCreationRequest,
@@ -11,6 +13,7 @@ import {
   SessionVerificationRequest,
   SignUpRequest,
   UserLookupResponse,
+  VerificationCodeRequest,
   VerificationSession,
   VerificationState,
 } from './auth-types';
@@ -133,6 +136,78 @@ export class AuthClient {
     return this.client.request(
       'DELETE',
       `${BASE}/keypair/${encodeURIComponent(keyID)}`,
+      options,
+    ) as Promise<Acknowledgement>;
+  }
+
+  /**
+   * Confirms a key pair with the code emailed at creation. Until this
+   * succeeds the pair exists but is not usable.
+   */
+  async verifyKeyPair(
+    request: VerificationCodeRequest,
+    options: RequestOptions = {},
+  ): Promise<Acknowledgement> {
+    return this.client.request('PUT', `${BASE}/keypair/verification`, {
+      ...options,
+      body: request,
+    }) as Promise<Acknowledgement>;
+  }
+
+  /**
+   * Addresses attached to the account, including unverified ones.
+   *
+   * The API answers 404 rather than an empty list when there are none, and
+   * caps the result at ten with no pagination.
+   */
+  async listEmails(options: RequestOptions = {}): Promise<Email[]> {
+    try {
+      const raw = (await this.client.request('GET', `${BASE}/emails`, options)) as {
+        emails?: Email[];
+      };
+      return raw?.emails ?? [];
+    } catch (err) {
+      if (err instanceof APIError && err.isNotFound()) return [];
+      throw err;
+    }
+  }
+
+  /** Adds an address. It is pending until `verifyEmail` succeeds. */
+  async createEmail(
+    address: string,
+    options: RequestOptions = {},
+  ): Promise<CreateEmailResponse> {
+    return this.client.request('POST', `${BASE}/email`, {
+      ...options,
+      body: { address },
+    }) as Promise<CreateEmailResponse>;
+  }
+
+  async verifyEmail(
+    request: VerificationCodeRequest,
+    options: RequestOptions = {},
+  ): Promise<Acknowledgement> {
+    return this.client.request('PUT', `${BASE}/email/verification`, {
+      ...options,
+      body: request,
+    }) as Promise<Acknowledgement>;
+  }
+
+  async setPreferredEmail(
+    emailID: string,
+    options: RequestOptions = {},
+  ): Promise<Acknowledgement> {
+    return this.client.request('PUT', `${BASE}/email/preferred`, {
+      ...options,
+      body: { emailID },
+    }) as Promise<Acknowledgement>;
+  }
+
+  /** The API refuses to delete the preferred address. Reassign preferred first. */
+  async deleteEmail(emailID: string, options: RequestOptions = {}): Promise<Acknowledgement> {
+    return this.client.request(
+      'DELETE',
+      `${BASE}/email/${encodeURIComponent(emailID)}`,
       options,
     ) as Promise<Acknowledgement>;
   }
