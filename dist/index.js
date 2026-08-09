@@ -1075,6 +1075,46 @@ var BillingClient = class {
       body: request
     });
   }
+  /**
+   * The caller's plan, subscription status and whether the trial is still
+   * available — everything needed to decide between offering a trial, an
+   * upgrade, or a link to manage an existing subscription.
+   */
+  async getCustomerTier(options = {}) {
+    return this.client.request("GET", `${BASE2}/customer/tier`, options);
+  }
+  /**
+   * Starts a Stripe Checkout session for the Pro plan.
+   *
+   * There is no separate "start trial" call: the API applies a 30-day trial
+   * automatically when the customer has not used one, so this is both the
+   * trial and the upgrade entry point.
+   *
+   * Owner only — anyone else gets 403.
+   */
+  async upgradeToPro(request, options = {}) {
+    return this.client.request("POST", `${BASE2}/stripe/upgrade`, {
+      ...options,
+      body: request
+    });
+  }
+  /**
+   * A short-lived Stripe billing portal link, where the customer manages
+   * payment method, invoices and cancellation. Owner only.
+   */
+  async startCustomerPortal(options = {}) {
+    return this.client.request("GET", `${BASE2}/stripe/customer`, options);
+  }
+  /**
+   * Members of the caller's customer account.
+   *
+   * Owner and admin only, so a 403 here is itself the answer to "am I allowed
+   * to manage billing" — the session's own `roles` are auth roles and say
+   * nothing about the billing account.
+   */
+  async listMembers(options = {}) {
+    return this.client.request("GET", `${BASE2}/customer/members`, options);
+  }
   /** Limit definitions for every service on the caller's tier. */
   async getLimits(options = {}) {
     return this.client.request("GET", `${BASE2}/limits`, options);
@@ -1195,6 +1235,58 @@ var AuthClient = class {
     return this.client.request(
       "DELETE",
       `${BASE3}/keypair/${encodeURIComponent(keyID)}`,
+      options
+    );
+  }
+  /**
+   * Confirms a key pair with the code emailed at creation. Until this
+   * succeeds the pair exists but is not usable.
+   */
+  async verifyKeyPair(request, options = {}) {
+    return this.client.request("PUT", `${BASE3}/keypair/verification`, {
+      ...options,
+      body: request
+    });
+  }
+  /**
+   * Addresses attached to the account, including unverified ones.
+   *
+   * The API answers 404 rather than an empty list when there are none, and
+   * caps the result at ten with no pagination.
+   */
+  async listEmails(options = {}) {
+    try {
+      const raw = await this.client.request("GET", `${BASE3}/emails`, options);
+      return raw?.emails ?? [];
+    } catch (err) {
+      if (err instanceof APIError && err.isNotFound()) return [];
+      throw err;
+    }
+  }
+  /** Adds an address. It is pending until `verifyEmail` succeeds. */
+  async createEmail(address, options = {}) {
+    return this.client.request("POST", `${BASE3}/email`, {
+      ...options,
+      body: { address }
+    });
+  }
+  async verifyEmail(request, options = {}) {
+    return this.client.request("PUT", `${BASE3}/email/verification`, {
+      ...options,
+      body: request
+    });
+  }
+  async setPreferredEmail(emailID, options = {}) {
+    return this.client.request("PUT", `${BASE3}/email/preferred`, {
+      ...options,
+      body: { emailID }
+    });
+  }
+  /** The API refuses to delete the preferred address. Reassign preferred first. */
+  async deleteEmail(emailID, options = {}) {
+    return this.client.request(
+      "DELETE",
+      `${BASE3}/email/${encodeURIComponent(emailID)}`,
       options
     );
   }

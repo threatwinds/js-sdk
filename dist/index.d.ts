@@ -789,6 +789,43 @@ interface CreateCustomerRequest {
 interface CreateCustomerResponse {
     message: string;
 }
+/** Membership role within a customer account. Billing actions require `owner`. */
+type CustomerRole = 'owner' | 'admin' | 'user';
+interface CustomerMember {
+    roleID: string;
+    userID: string;
+    role: CustomerRole;
+}
+interface CustomerMembersPage {
+    members: CustomerMember[];
+    pages: number;
+    items: number;
+}
+/** The caller's current plan, and whether a trial is still on the table. */
+interface CustomerTier {
+    customerId: string;
+    tierId: string;
+    tierName: string;
+    description: string;
+    isActive: boolean;
+    /** `active`, `trialing`, `past_due`, `canceled`, `unpaid`, … */
+    subscriptionStatus: string;
+    stacks: number;
+    /** Once true the 30-day trial is spent; upgrading then bills immediately. */
+    trialUsed: boolean;
+}
+interface UpgradeToProRequest {
+    /** Stripe returns the browser here on success. */
+    successURL: string;
+    /** …and here if the checkout is abandoned. */
+    cancelURL: string;
+}
+interface UpgradeToProResponse {
+    checkoutURL: string;
+}
+interface CustomerPortalSession {
+    url: string;
+}
 interface LimitDefinition {
     value: number;
     /** e.g. "minute", "month". */
@@ -871,6 +908,35 @@ declare class BillingClient {
      * safe to call defensively: it cannot produce a duplicate.
      */
     createCustomer(request: CreateCustomerRequest, options?: RequestOptions): Promise<CreateCustomerResponse>;
+    /**
+     * The caller's plan, subscription status and whether the trial is still
+     * available — everything needed to decide between offering a trial, an
+     * upgrade, or a link to manage an existing subscription.
+     */
+    getCustomerTier(options?: RequestOptions): Promise<CustomerTier>;
+    /**
+     * Starts a Stripe Checkout session for the Pro plan.
+     *
+     * There is no separate "start trial" call: the API applies a 30-day trial
+     * automatically when the customer has not used one, so this is both the
+     * trial and the upgrade entry point.
+     *
+     * Owner only — anyone else gets 403.
+     */
+    upgradeToPro(request: UpgradeToProRequest, options?: RequestOptions): Promise<UpgradeToProResponse>;
+    /**
+     * A short-lived Stripe billing portal link, where the customer manages
+     * payment method, invoices and cancellation. Owner only.
+     */
+    startCustomerPortal(options?: RequestOptions): Promise<CustomerPortalSession>;
+    /**
+     * Members of the caller's customer account.
+     *
+     * Owner and admin only, so a 403 here is itself the answer to "am I allowed
+     * to manage billing" — the session's own `roles` are auth roles and say
+     * nothing about the billing account.
+     */
+    listMembers(options?: RequestOptions): Promise<CustomerMembersPage>;
     /** Limit definitions for every service on the caller's tier. */
     getLimits(options?: RequestOptions): Promise<TierLimits>;
     /** Limit definitions for one service, e.g. `ai-api`. */
@@ -996,6 +1062,27 @@ interface VerificationSession extends Partial<VerificationState> {
     status: VerificationStatus;
     url?: string;
 }
+/** One address attached to an account. `id` is what delete and set-preferred take. */
+interface Email {
+    id: string;
+    address: string;
+    verified: boolean;
+    preferred: boolean;
+}
+/** `POST /email` confirms nothing by itself — the address is pending until verified. */
+interface CreateEmailResponse {
+    verificationCodeID: string;
+}
+/**
+ * Confirms a pending email or key pair.
+ *
+ * The `verificationCodeID` is issued once by the create call and cannot be
+ * re-requested; there is no resend endpoint.
+ */
+interface VerificationCodeRequest {
+    verificationCodeID: string;
+    code: string;
+}
 
 /**
  * Client for the ThreatWinds Auth API.
@@ -1046,6 +1133,24 @@ declare class AuthClient {
     /** Returns full unredacted API keys — treat the result as a secret. */
     listKeyPairs(options?: RequestOptions): Promise<KeyPair[]>;
     deleteKeyPair(keyID: string, options?: RequestOptions): Promise<Acknowledgement>;
+    /**
+     * Confirms a key pair with the code emailed at creation. Until this
+     * succeeds the pair exists but is not usable.
+     */
+    verifyKeyPair(request: VerificationCodeRequest, options?: RequestOptions): Promise<Acknowledgement>;
+    /**
+     * Addresses attached to the account, including unverified ones.
+     *
+     * The API answers 404 rather than an empty list when there are none, and
+     * caps the result at ten with no pagination.
+     */
+    listEmails(options?: RequestOptions): Promise<Email[]>;
+    /** Adds an address. It is pending until `verifyEmail` succeeds. */
+    createEmail(address: string, options?: RequestOptions): Promise<CreateEmailResponse>;
+    verifyEmail(request: VerificationCodeRequest, options?: RequestOptions): Promise<Acknowledgement>;
+    setPreferredEmail(emailID: string, options?: RequestOptions): Promise<Acknowledgement>;
+    /** The API refuses to delete the preferred address. Reassign preferred first. */
+    deleteEmail(emailID: string, options?: RequestOptions): Promise<Acknowledgement>;
     findUserByEmail(email: string, options?: RequestOptions): Promise<string | null>;
     /**
      * Current identity-verification (KYC) state, including how many attempts
@@ -1580,4 +1685,4 @@ declare function detectIndicatorTypes(raw: string): IndicatorType[];
 /** Convenience wrapper returning only the single most likely type. */
 declare function detectIndicatorType(raw: string): IndicatorType | null;
 
-export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type Customer, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type EmbeddingsRequest, type EmbeddingsResponse, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
