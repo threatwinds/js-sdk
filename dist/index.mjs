@@ -1765,6 +1765,31 @@ var CaseworkClient = class {
     await this.client.request("DELETE", `${BASE5}/searches/${encodeURIComponent(id)}`, options);
   }
   /**
+   * The analyst's panel arrangement for a conversation.
+   *
+   * An unset canvas comes back as an empty array rather than an error — every
+   * conversation starts without one.
+   */
+  async getCanvas(conversationId, options = {}) {
+    const raw = await this.client.request(
+      "GET",
+      `${BASE5}/conversations/${encodeURIComponent(conversationId)}/canvas`,
+      options
+    );
+    return raw?.panels ?? [];
+  }
+  /**
+   * Replaces the arrangement wholesale. The server caps this at 24 panels and
+   * 64KB and rejects unknown panel kinds.
+   */
+  async putCanvas(conversationId, panels, options = {}) {
+    await this.client.request(
+      "PUT",
+      `${BASE5}/conversations/${encodeURIComponent(conversationId)}/canvas`,
+      { ...options, body: { panels } }
+    );
+  }
+  /**
    * The caller's conversations, most recently active first.
    *
    * `caseId` narrows to one case; pass `UNFILED` for threads attached to none,
