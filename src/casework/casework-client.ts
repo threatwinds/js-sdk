@@ -236,7 +236,7 @@ function toTurn(raw: unknown): Turn {
 }
 
 function toDraft(raw: unknown): DraftEntity {
-  const r = (raw ?? {}) as Record<string, unknown>;
+  const r = asRecord(raw);
   return {
     id: str(r, 'id'),
     type: str(r, 'type'),
@@ -250,7 +250,7 @@ function toDraft(raw: unknown): DraftEntity {
 }
 
 function toRelation(raw: unknown): DraftRelation {
-  const r = (raw ?? {}) as Record<string, unknown>;
+  const r = asRecord(raw);
   return {
     id: str(r, 'id'),
     sourceKind: r.source_kind as EndpointKind,
@@ -473,7 +473,7 @@ export class CaseworkClient {
       { ...options, body: { exclude: input.exclude ?? [] } },
     )) as { drafts?: unknown[]; skipped_relations?: unknown[] };
     return {
-      drafts: (raw.drafts ?? []).map(o => {
+      drafts: (raw.drafts ?? []).map((o): DraftOutcome => {
         const r = o as Record<string, unknown>;
         return {
           draftId: str(r, 'draft_id', 'draftId'),
@@ -481,7 +481,7 @@ export class CaseworkClient {
           error: (r.error as string) || undefined,
         };
       }),
-      skippedRelations: (raw.skipped_relations ?? []).map(s => {
+      skippedRelations: (raw.skipped_relations ?? []).map((s): SkippedRelation => {
         const r = s as Record<string, unknown>;
         return { relationId: str(r, 'relation_id', 'relationId'), reason: str(r, 'reason') };
       }),

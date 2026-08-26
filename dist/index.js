@@ -1602,6 +1602,29 @@ function toTurn(raw) {
     seq: num(t, "seq")
   };
 }
+function toDraft(raw) {
+  const r = asRecord2(raw);
+  return {
+    id: str(r, "id"),
+    type: str(r, "type"),
+    value: str(r, "value"),
+    state: r.state ?? "draft",
+    payload: r.payload ?? {},
+    publishedAt: r.published_at || void 0,
+    lastError: r.last_error || void 0,
+    attempts: num(r, "attempts")
+  };
+}
+function toRelation(raw) {
+  const r = asRecord2(raw);
+  return {
+    id: str(r, "id"),
+    sourceKind: r.source_kind,
+    sourceRef: str(r, "source_ref", "sourceRef"),
+    targetKind: r.target_kind,
+    targetRef: str(r, "target_ref", "targetRef")
+  };
+}
 function conversationBody(input, unfilable) {
   const body = {};
   if (input.title !== void 0) body.title = input.title;
@@ -1681,6 +1704,86 @@ var CaseworkClient = class {
       `${BASE5}/cases/${encodeURIComponent(caseId)}/entities/${encodeURIComponent(entityId)}`,
       options
     );
+  }
+  async listDrafts(caseId, options = {}) {
+    const raw = await this.client.request(
+      "GET",
+      `${BASE5}/cases/${encodeURIComponent(caseId)}/drafts`,
+      options
+    );
+    return {
+      drafts: (raw.drafts ?? []).map(toDraft),
+      relations: (raw.relations ?? []).map(toRelation)
+    };
+  }
+  async createDraft(caseId, input, options = {}) {
+    return toDraft(
+      await this.client.request("POST", `${BASE5}/cases/${encodeURIComponent(caseId)}/drafts`, {
+        ...options,
+        body: { payload: input.payload, type: input.type, value: input.value }
+      })
+    );
+  }
+  async updateDraft(caseId, draftId, input, options = {}) {
+    return toDraft(
+      await this.client.request(
+        "PATCH",
+        `${BASE5}/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+        { ...options, body: { payload: input.payload, type: input.type, value: input.value } }
+      )
+    );
+  }
+  async deleteDraft(caseId, draftId, options = {}) {
+    await this.client.request(
+      "DELETE",
+      `${BASE5}/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+      options
+    );
+  }
+  async createRelation(caseId, input, options = {}) {
+    return toRelation(
+      await this.client.request("POST", `${BASE5}/cases/${encodeURIComponent(caseId)}/relations`, {
+        ...options,
+        body: {
+          source_kind: input.sourceKind,
+          source_ref: input.sourceRef,
+          target_kind: input.targetKind,
+          target_ref: input.targetRef,
+          ...input.sourcePayload ? { source_payload: input.sourcePayload } : {},
+          ...input.targetPayload ? { target_payload: input.targetPayload } : {}
+        }
+      })
+    );
+  }
+  async deleteRelation(caseId, relationId, options = {}) {
+    await this.client.request(
+      "DELETE",
+      `${BASE5}/cases/${encodeURIComponent(caseId)}/relations/${encodeURIComponent(relationId)}`,
+      options
+    );
+  }
+  /** Publishes every unpublished draft except those excluded. Irreversible:
+   *  no route anywhere withdraws published data. */
+  async publishCase(caseId, input = {}, options = {}) {
+    const raw = await this.client.request(
+      "POST",
+      `${BASE5}/cases/${encodeURIComponent(caseId)}/publish`,
+      { ...options, body: { exclude: input.exclude ?? [] } }
+    );
+    return {
+      drafts: (raw.drafts ?? []).map((o) => {
+        const r = o;
+        return {
+          draftId: str(r, "draft_id", "draftId"),
+          state: r.state,
+          error: r.error || void 0
+        };
+      }),
+      skippedRelations: (raw.skipped_relations ?? []).map((s) => {
+        const r = s;
+        return { relationId: str(r, "relation_id", "relationId"), reason: str(r, "reason") };
+      })
+    };
   }
   async listWatchlists(options = {}) {
     const raw = await this.client.request("GET", `${BASE5}/watchlists`, options);

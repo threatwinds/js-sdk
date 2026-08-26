@@ -1554,6 +1554,60 @@ interface CanvasPanel {
 interface CanvasPayload {
     panels: CanvasPanel[];
 }
+type DraftState = 'draft' | 'published' | 'failed';
+type EndpointKind = 'draft' | 'entity';
+interface DraftEntity {
+    id: string;
+    type: string;
+    value: string;
+    state: DraftState;
+    /** The stored ingest payload, returned so an edit can prefill. `type` and
+     *  `value` alone are not enough: reputation, tags and description live only
+     *  in here, and a form that could not read them back would silently discard
+     *  them on every edit. */
+    payload: unknown;
+    publishedAt?: string;
+    lastError?: string;
+    attempts: number;
+}
+interface DraftInput {
+    /** The ingest entity payload, built by the caller. Must not carry
+     *  `associations` or `visibleBy` — relations are separate and visibility
+     *  belongs to the case. The API rejects either. */
+    payload: unknown;
+    type: string;
+    value: string;
+}
+interface DraftRelation {
+    id: string;
+    sourceKind: EndpointKind;
+    sourceRef: string;
+    targetKind: EndpointKind;
+    targetRef: string;
+}
+interface RelationInput {
+    sourceKind: EndpointKind;
+    sourceRef: string;
+    targetKind: EndpointKind;
+    targetRef: string;
+    /** Required when the matching endpoint is an `entity`: publish nests it as a
+     *  full entity payload, not an id. */
+    sourcePayload?: unknown;
+    targetPayload?: unknown;
+}
+interface DraftOutcome {
+    draftId: string;
+    state: DraftState;
+    error?: string;
+}
+interface SkippedRelation {
+    relationId: string;
+    reason: string;
+}
+interface PublishResult {
+    drafts: DraftOutcome[];
+    skippedRelations: SkippedRelation[];
+}
 
 /**
  * Client for analyst-owned casework.
@@ -1577,6 +1631,20 @@ declare class CaseworkClient {
     /** Pinning the same entity twice is a no-op server-side, not an error. */
     pinEntity(caseId: string, input: PinEntityInput, options?: RequestOptions): Promise<CaseEntity>;
     unpinEntity(caseId: string, entityId: string, options?: RequestOptions): Promise<void>;
+    listDrafts(caseId: string, options?: RequestOptions): Promise<{
+        drafts: DraftEntity[];
+        relations: DraftRelation[];
+    }>;
+    createDraft(caseId: string, input: DraftInput, options?: RequestOptions): Promise<DraftEntity>;
+    updateDraft(caseId: string, draftId: string, input: DraftInput, options?: RequestOptions): Promise<DraftEntity>;
+    deleteDraft(caseId: string, draftId: string, options?: RequestOptions): Promise<void>;
+    createRelation(caseId: string, input: RelationInput, options?: RequestOptions): Promise<DraftRelation>;
+    deleteRelation(caseId: string, relationId: string, options?: RequestOptions): Promise<void>;
+    /** Publishes every unpublished draft except those excluded. Irreversible:
+     *  no route anywhere withdraws published data. */
+    publishCase(caseId: string, input?: {
+        exclude?: string[];
+    }, options?: RequestOptions): Promise<PublishResult>;
     listWatchlists(options?: RequestOptions): Promise<Watchlist[]>;
     createWatchlist(input: WatchlistInput, options?: RequestOptions): Promise<Watchlist>;
     updateWatchlist(id: string, input: WatchlistInput, options?: RequestOptions): Promise<Watchlist>;
