@@ -225,6 +225,15 @@ export {
   // name and args. Different shapes at different points in the lifecycle, so
   // the casework type is aliased at the package root rather than merged.
   ToolCall as ConversationToolCall,
+  DraftState,
+  EndpointKind,
+  DraftEntity,
+  DraftInput,
+  DraftRelation,
+  RelationInput,
+  DraftOutcome,
+  SkippedRelation,
+  PublishResult,
 } from './casework/casework-types';
 
 // AI warm-up policy — the self-hosted generation pods scale to zero, so any
