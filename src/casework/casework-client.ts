@@ -11,9 +11,18 @@ import {
   CaseStatus,
   Conversation,
   ConversationInput,
+  DraftEntity,
+  DraftInput,
+  DraftOutcome,
+  DraftRelation,
+  DraftState,
+  EndpointKind,
   MatchKind,
   PinEntityInput,
+  PublishResult,
+  RelationInput,
   SavedSearch,
+  SkippedRelation,
   ToolCall,
   Turn,
   Watchlist,
@@ -53,6 +62,15 @@ function num(src: Raw, ...keys: string[]): number {
   return 0;
 }
 
+/** Absent, rather than `[]`, when the key is missing — see `Case.visibleBy`. */
+function strArrayOrUndefined(src: Raw, ...keys: string[]): string[] | undefined {
+  for (const key of keys) {
+    const v = src[key];
+    if (Array.isArray(v)) return v.filter((item): item is string => typeof item === 'string');
+  }
+  return undefined;
+}
+
 /**
  * The API emits snake_case; the SDK exposes camelCase like every other client
  * here, so the mapping is explicit rather than leaking the wire format.
@@ -90,6 +108,7 @@ function toCase(raw: unknown): Case {
     status:
       status === 'open' || status === 'in_progress' || status === 'closed' ? status : 'open',
     severity: Math.min(4, Math.max(0, num(c, 'severity'))) as Case['severity'],
+    visibleBy: strArrayOrUndefined(c, 'visible_by', 'visibleBy'),
     createdAt: str(c, 'created_at', 'createdAt'),
     updatedAt: str(c, 'updated_at', 'updatedAt'),
     // Absent on list responses; only the detail endpoint preloads children.
@@ -226,6 +245,31 @@ function toTurn(raw: unknown): Turn {
   };
 }
 
+function toDraft(raw: unknown): DraftEntity {
+  const r = asRecord(raw);
+  return {
+    id: str(r, 'id'),
+    type: str(r, 'type'),
+    value: str(r, 'value'),
+    state: (r.state as DraftState) ?? 'draft',
+    payload: r.payload ?? {},
+    publishedAt: (r.published_at as string) || undefined,
+    lastError: (r.last_error as string) || undefined,
+    attempts: num(r, 'attempts'),
+  };
+}
+
+function toRelation(raw: unknown): DraftRelation {
+  const r = asRecord(raw);
+  return {
+    id: str(r, 'id'),
+    sourceKind: r.source_kind as EndpointKind,
+    sourceRef: str(r, 'source_ref', 'sourceRef'),
+    targetKind: r.target_kind as EndpointKind,
+    targetRef: str(r, 'target_ref', 'targetRef'),
+  };
+}
+
 /**
  * Requests are sent in the API's snake_case shape.
  *
@@ -257,6 +301,7 @@ function caseBody(input: CaseInput): Record<string, unknown> {
   if (input.summary !== undefined) body.summary = input.summary;
   if (input.status !== undefined) body.status = input.status;
   if (input.severity !== undefined) body.severity = input.severity;
+  if (input.visibleBy !== undefined) body.visible_by = input.visibleBy;
   return body;
 }
 
@@ -341,6 +386,117 @@ export class CaseworkClient {
       `${BASE}/cases/${encodeURIComponent(caseId)}/entities/${encodeURIComponent(entityId)}`,
       options,
     );
+  }
+
+  async listDrafts(
+    caseId: string,
+    options: RequestOptions = {},
+  ): Promise<{ drafts: DraftEntity[]; relations: DraftRelation[] }> {
+    const raw = (await this.client.request(
+      'GET',
+      `${BASE}/cases/${encodeURIComponent(caseId)}/drafts`,
+      options,
+    )) as { drafts?: unknown[]; relations?: unknown[] };
+    return {
+      drafts: (raw.drafts ?? []).map(toDraft),
+      relations: (raw.relations ?? []).map(toRelation),
+    };
+  }
+
+  async createDraft(
+    caseId: string,
+    input: DraftInput,
+    options: RequestOptions = {},
+  ): Promise<DraftEntity> {
+    return toDraft(
+      await this.client.request('POST', `${BASE}/cases/${encodeURIComponent(caseId)}/drafts`, {
+        ...options,
+        body: { payload: input.payload, type: input.type, value: input.value },
+      }),
+    );
+  }
+
+  async updateDraft(
+    caseId: string,
+    draftId: string,
+    input: DraftInput,
+    options: RequestOptions = {},
+  ): Promise<DraftEntity> {
+    return toDraft(
+      await this.client.request(
+        'PATCH',
+        `${BASE}/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+        { ...options, body: { payload: input.payload, type: input.type, value: input.value } },
+      ),
+    );
+  }
+
+  async deleteDraft(caseId: string, draftId: string, options: RequestOptions = {}): Promise<void> {
+    await this.client.request(
+      'DELETE',
+      `${BASE}/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+      options,
+    );
+  }
+
+  async createRelation(
+    caseId: string,
+    input: RelationInput,
+    options: RequestOptions = {},
+  ): Promise<DraftRelation> {
+    return toRelation(
+      await this.client.request('POST', `${BASE}/cases/${encodeURIComponent(caseId)}/relations`, {
+        ...options,
+        body: {
+          source_kind: input.sourceKind,
+          source_ref: input.sourceRef,
+          target_kind: input.targetKind,
+          target_ref: input.targetRef,
+          ...(input.sourcePayload ? { source_payload: input.sourcePayload } : {}),
+          ...(input.targetPayload ? { target_payload: input.targetPayload } : {}),
+        },
+      }),
+    );
+  }
+
+  async deleteRelation(
+    caseId: string,
+    relationId: string,
+    options: RequestOptions = {},
+  ): Promise<void> {
+    await this.client.request(
+      'DELETE',
+      `${BASE}/cases/${encodeURIComponent(caseId)}/relations/${encodeURIComponent(relationId)}`,
+      options,
+    );
+  }
+
+  /** Publishes every unpublished draft except those excluded. Irreversible:
+   *  no route anywhere withdraws published data. */
+  async publishCase(
+    caseId: string,
+    input: { exclude?: string[] } = {},
+    options: RequestOptions = {},
+  ): Promise<PublishResult> {
+    const raw = (await this.client.request(
+      'POST',
+      `${BASE}/cases/${encodeURIComponent(caseId)}/publish`,
+      { ...options, body: { exclude: input.exclude ?? [] } },
+    )) as { drafts?: unknown[]; skipped_relations?: unknown[] };
+    return {
+      drafts: (raw.drafts ?? []).map((o): DraftOutcome => {
+        const r = o as Record<string, unknown>;
+        return {
+          draftId: str(r, 'draft_id', 'draftId'),
+          state: r.state as DraftState,
+          error: (r.error as string) || undefined,
+        };
+      }),
+      skippedRelations: (raw.skipped_relations ?? []).map((s): SkippedRelation => {
+        const r = s as Record<string, unknown>;
+        return { relationId: str(r, 'relation_id', 'relationId'), reason: str(r, 'reason') };
+      }),
+    };
   }
 
   async listWatchlists(options: RequestOptions = {}): Promise<Watchlist[]> {

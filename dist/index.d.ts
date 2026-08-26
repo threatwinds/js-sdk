@@ -1355,6 +1355,11 @@ interface Case {
     summary: string;
     status: CaseStatus;
     severity: CaseSeverity;
+    /** The audience every draft this case publishes will carry — one setting
+     *  per case, chosen from the analyst's own session groups. Absent means no
+     *  choice has been made: publish then falls back to the caller's own
+     *  groups. */
+    visibleBy?: string[];
     createdAt: string;
     updatedAt: string;
     notes: CaseNote[];
@@ -1365,6 +1370,9 @@ interface CaseInput {
     summary?: string;
     status?: CaseStatus;
     severity?: CaseSeverity;
+    /** See `Case.visibleBy`. Left `undefined`, the case's existing visibility
+     *  (or lack of one) is unchanged. */
+    visibleBy?: string[];
 }
 interface PinEntityInput {
     entityId: string;
@@ -1554,6 +1562,60 @@ interface CanvasPanel {
 interface CanvasPayload {
     panels: CanvasPanel[];
 }
+type DraftState = 'draft' | 'published' | 'failed';
+type EndpointKind = 'draft' | 'entity';
+interface DraftEntity {
+    id: string;
+    type: string;
+    value: string;
+    state: DraftState;
+    /** The stored ingest payload, returned so an edit can prefill. `type` and
+     *  `value` alone are not enough: reputation, tags and description live only
+     *  in here, and a form that could not read them back would silently discard
+     *  them on every edit. */
+    payload: unknown;
+    publishedAt?: string;
+    lastError?: string;
+    attempts: number;
+}
+interface DraftInput {
+    /** The ingest entity payload, built by the caller. Must not carry
+     *  `associations` or `visibleBy` — relations are separate and visibility
+     *  belongs to the case. The API rejects either. */
+    payload: unknown;
+    type: string;
+    value: string;
+}
+interface DraftRelation {
+    id: string;
+    sourceKind: EndpointKind;
+    sourceRef: string;
+    targetKind: EndpointKind;
+    targetRef: string;
+}
+interface RelationInput {
+    sourceKind: EndpointKind;
+    sourceRef: string;
+    targetKind: EndpointKind;
+    targetRef: string;
+    /** Required when the matching endpoint is an `entity`: publish nests it as a
+     *  full entity payload, not an id. */
+    sourcePayload?: unknown;
+    targetPayload?: unknown;
+}
+interface DraftOutcome {
+    draftId: string;
+    state: DraftState;
+    error?: string;
+}
+interface SkippedRelation {
+    relationId: string;
+    reason: string;
+}
+interface PublishResult {
+    drafts: DraftOutcome[];
+    skippedRelations: SkippedRelation[];
+}
 
 /**
  * Client for analyst-owned casework.
@@ -1577,6 +1639,20 @@ declare class CaseworkClient {
     /** Pinning the same entity twice is a no-op server-side, not an error. */
     pinEntity(caseId: string, input: PinEntityInput, options?: RequestOptions): Promise<CaseEntity>;
     unpinEntity(caseId: string, entityId: string, options?: RequestOptions): Promise<void>;
+    listDrafts(caseId: string, options?: RequestOptions): Promise<{
+        drafts: DraftEntity[];
+        relations: DraftRelation[];
+    }>;
+    createDraft(caseId: string, input: DraftInput, options?: RequestOptions): Promise<DraftEntity>;
+    updateDraft(caseId: string, draftId: string, input: DraftInput, options?: RequestOptions): Promise<DraftEntity>;
+    deleteDraft(caseId: string, draftId: string, options?: RequestOptions): Promise<void>;
+    createRelation(caseId: string, input: RelationInput, options?: RequestOptions): Promise<DraftRelation>;
+    deleteRelation(caseId: string, relationId: string, options?: RequestOptions): Promise<void>;
+    /** Publishes every unpublished draft except those excluded. Irreversible:
+     *  no route anywhere withdraws published data. */
+    publishCase(caseId: string, input?: {
+        exclude?: string[];
+    }, options?: RequestOptions): Promise<PublishResult>;
     listWatchlists(options?: RequestOptions): Promise<Watchlist[]>;
     createWatchlist(input: WatchlistInput, options?: RequestOptions): Promise<Watchlist>;
     updateWatchlist(id: string, input: WatchlistInput, options?: RequestOptions): Promise<Watchlist>;
@@ -1713,4 +1789,4 @@ declare function detectIndicatorTypes(raw: string): IndicatorType[];
 /** Convenience wrapper returning only the single most likely type. */
 declare function detectIndicatorType(raw: string): IndicatorType | null;
 
-export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type DraftEntity, type DraftInput, type DraftOutcome, type DraftRelation, type DraftState, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EndpointKind, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type PublishResult, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationInput, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type SkippedRelation, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
