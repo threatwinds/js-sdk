@@ -248,3 +248,65 @@ export interface CanvasPanel {
 export interface CanvasPayload {
   panels: CanvasPanel[];
 }
+
+export type DraftState = 'draft' | 'published' | 'failed';
+export type EndpointKind = 'draft' | 'entity';
+
+export interface DraftEntity {
+  id: string;
+  type: string;
+  value: string;
+  state: DraftState;
+  /** The stored ingest payload, returned so an edit can prefill. `type` and
+   *  `value` alone are not enough: reputation, tags and description live only
+   *  in here, and a form that could not read them back would silently discard
+   *  them on every edit. */
+  payload: unknown;
+  publishedAt?: string;
+  lastError?: string;
+  attempts: number;
+}
+
+export interface DraftInput {
+  /** The ingest entity payload, built by the caller. Must not carry
+   *  `associations` or `visibleBy` — relations are separate and visibility
+   *  belongs to the case. The API rejects either. */
+  payload: unknown;
+  type: string;
+  value: string;
+}
+
+export interface DraftRelation {
+  id: string;
+  sourceKind: EndpointKind;
+  sourceRef: string;
+  targetKind: EndpointKind;
+  targetRef: string;
+}
+
+export interface RelationInput {
+  sourceKind: EndpointKind;
+  sourceRef: string;
+  targetKind: EndpointKind;
+  targetRef: string;
+  /** Required when the matching endpoint is an `entity`: publish nests it as a
+   *  full entity payload, not an id. */
+  sourcePayload?: unknown;
+  targetPayload?: unknown;
+}
+
+export interface DraftOutcome {
+  draftId: string;
+  state: DraftState;
+  error?: string;
+}
+
+export interface SkippedRelation {
+  relationId: string;
+  reason: string;
+}
+
+export interface PublishResult {
+  drafts: DraftOutcome[];
+  skippedRelations: SkippedRelation[];
+}
