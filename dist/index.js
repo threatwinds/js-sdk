@@ -1469,6 +1469,13 @@ function num(src, ...keys) {
   }
   return 0;
 }
+function strArrayOrUndefined(src, ...keys) {
+  for (const key of keys) {
+    const v = src[key];
+    if (Array.isArray(v)) return v.filter((item) => typeof item === "string");
+  }
+  return void 0;
+}
 function toNote(raw) {
   const n = asRecord2(raw);
   return {
@@ -1499,6 +1506,7 @@ function toCase(raw) {
     summary: str(c, "summary"),
     status: status === "open" || status === "in_progress" || status === "closed" ? status : "open",
     severity: Math.min(4, Math.max(0, num(c, "severity"))),
+    visibleBy: strArrayOrUndefined(c, "visible_by", "visibleBy"),
     createdAt: str(c, "created_at", "createdAt"),
     updatedAt: str(c, "updated_at", "updatedAt"),
     // Absent on list responses; only the detail endpoint preloads children.
@@ -1641,6 +1649,7 @@ function caseBody(input) {
   if (input.summary !== void 0) body.summary = input.summary;
   if (input.status !== void 0) body.status = input.status;
   if (input.severity !== void 0) body.severity = input.severity;
+  if (input.visibleBy !== void 0) body.visible_by = input.visibleBy;
   return body;
 }
 var CaseworkClient = class {

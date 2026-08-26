@@ -32,6 +32,11 @@ export interface Case {
   summary: string;
   status: CaseStatus;
   severity: CaseSeverity;
+  /** The audience every draft this case publishes will carry — one setting
+   *  per case, chosen from the analyst's own session groups. Absent means no
+   *  choice has been made: publish then falls back to the caller's own
+   *  groups. */
+  visibleBy?: string[];
   createdAt: string;
   updatedAt: string;
   notes: CaseNote[];
@@ -43,6 +48,9 @@ export interface CaseInput {
   summary?: string;
   status?: CaseStatus;
   severity?: CaseSeverity;
+  /** See `Case.visibleBy`. Left `undefined`, the case's existing visibility
+   *  (or lack of one) is unchanged. */
+  visibleBy?: string[];
 }
 
 export interface PinEntityInput {

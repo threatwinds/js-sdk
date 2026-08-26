@@ -62,6 +62,15 @@ function num(src: Raw, ...keys: string[]): number {
   return 0;
 }
 
+/** Absent, rather than `[]`, when the key is missing — see `Case.visibleBy`. */
+function strArrayOrUndefined(src: Raw, ...keys: string[]): string[] | undefined {
+  for (const key of keys) {
+    const v = src[key];
+    if (Array.isArray(v)) return v.filter((item): item is string => typeof item === 'string');
+  }
+  return undefined;
+}
+
 /**
  * The API emits snake_case; the SDK exposes camelCase like every other client
  * here, so the mapping is explicit rather than leaking the wire format.
@@ -99,6 +108,7 @@ function toCase(raw: unknown): Case {
     status:
       status === 'open' || status === 'in_progress' || status === 'closed' ? status : 'open',
     severity: Math.min(4, Math.max(0, num(c, 'severity'))) as Case['severity'],
+    visibleBy: strArrayOrUndefined(c, 'visible_by', 'visibleBy'),
     createdAt: str(c, 'created_at', 'createdAt'),
     updatedAt: str(c, 'updated_at', 'updatedAt'),
     // Absent on list responses; only the detail endpoint preloads children.
@@ -291,6 +301,7 @@ function caseBody(input: CaseInput): Record<string, unknown> {
   if (input.summary !== undefined) body.summary = input.summary;
   if (input.status !== undefined) body.status = input.status;
   if (input.severity !== undefined) body.severity = input.severity;
+  if (input.visibleBy !== undefined) body.visible_by = input.visibleBy;
   return body;
 }
 
