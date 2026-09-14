@@ -71,16 +71,6 @@ export interface RelationsResult {
   depth: number;
 }
 
-export interface Comment {
-  id: string;
-  entityId: string;
-  content: string;
-  author: string;
-  authorName: string;
-  createdAt: string;
-  parentId: string | null;
-}
-
 export interface ScanResult {
   taskId: string;
   status: string;

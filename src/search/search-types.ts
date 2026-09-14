@@ -1,3 +1,5 @@
+import type { PaginatedResponse } from '../core/types';
+
 export interface EntityObject {
   id: string;
   type: string;
@@ -105,4 +107,31 @@ export interface AggregationResult {
 
 export interface AdvancedSearchResponse {
   aggregations: Record<string, AggregationResult>;
+}
+
+/** A page that also reports the API's total match count. */
+export type CountedPage<T> = PaginatedResponse<T> & { items: number };
+
+/** The all-zeros UUID the API uses to mean "no parent". */
+export const NO_PARENT = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * One comment on an entity.
+ *
+ * Shape mirrors the indexed document (go-sdk `entities.Comment`), which the
+ * search API returns verbatim plus the hit id. `author` is an opaque user
+ * UUID — the platform stores no display name anywhere.
+ */
+export interface Comment {
+  id: string;
+  entityId: string;
+  /** API field `comment`. */
+  content: string;
+  /** API field `userID`. Opaque UUID, never a name. */
+  author: string;
+  /** API field `@timestamp`. Always written server-side at ingest. */
+  createdAt: string;
+  /** `NO_PARENT` for a top-level comment; never absent. */
+  parentId: string;
+  visibleBy: string[];
 }

@@ -72,14 +72,26 @@ export class IngestClient {
     return Array.isArray(raw) ? (raw as EntityDefinition[]) : [];
   }
 
+  /**
+   * Posts a comment on an entity. Requires a KYC-verified account.
+   *
+   * Field names here are the API's, not the SDK's: `ingest-api` binds
+   * `entityID` / `comment` / `parentID`. An earlier version sent the SDK's own
+   * camelCase names, so every comment posted was empty and rejected.
+   */
   async createComment(request: CommentRequest, options: RequestOptions = {}): Promise<Comment> {
+    const body: Record<string, unknown> = {
+      entityID: request.entityId,
+      comment: request.content,
+    };
+    // uuid.UUID has no "absent" encoding server-side, so send the key only
+    // when there really is a parent.
+    if (request.parentId) body.parentID = request.parentId;
+    if (request.visibleBy?.length) body.visibleBy = request.visibleBy;
+
     return this.client.request('POST', `${BASE}/comment`, {
       ...options,
-      body: {
-        entityId: request.entityId,
-        content: request.content,
-        parentId: request.parentId ?? null,
-      },
+      body,
     }) as Promise<Comment>;
   }
 

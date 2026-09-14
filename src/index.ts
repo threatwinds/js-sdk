@@ -121,6 +121,8 @@ export {
   AggregationBucket,
   AggregationResult,
   AdvancedSearchResponse,
+  CountedPage,
+  NO_PARENT,
 } from './search/search-types';
 
 // Analytics types

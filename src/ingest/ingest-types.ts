@@ -68,18 +68,15 @@ export interface EntityDefinition {
 export interface CommentRequest {
   entityId: string;
   content: string;
+  /** Omit for a top-level comment. */
   parentId?: string | null;
+  /** Defaults server-side to the poster's own groups. */
+  visibleBy?: string[];
 }
 
-export interface Comment {
-  id: string;
-  entityId: string;
-  content: string;
-  author: string;
-  authorName: string;
-  createdAt: string;
-  parentId: string | null;
-}
+// The comment record itself is a search-side concern; re-exported here so
+// `createComment`'s return type stays importable from the ingest surface.
+export type { Comment } from '../search/search-types';
 
 export interface ScanRequest {
   target: string;
