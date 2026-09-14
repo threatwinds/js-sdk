@@ -122,8 +122,13 @@ export {
   AggregationResult,
   AdvancedSearchResponse,
   CountedPage,
+  EntityHistoryRecord,
+  RelationRecord,
   NO_PARENT,
 } from './search/search-types';
+
+// Search client options
+export type { PageOptions } from './search/search-client';
 
 // Analytics types
 export {
