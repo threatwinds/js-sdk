@@ -223,6 +223,10 @@ export class AnalyticsClient {
   /**
    * Relationship graph around an entity.
    *
+   * Not to be confused with `SearchClient.getEntityRelations`, which returns a
+   * paginated, time-ordered list of related entities. This one returns the
+   * graph. Each name matches the endpoint it wraps.
+   *
    * The API returns the edge list under `relations`; earlier versions of this
    * method read `edges`, which does not exist in the response and so always
    * produced an empty graph. Both spellings are accepted now.

@@ -157,3 +157,18 @@ export interface EntityHistoryRecord {
   visibleBy: string[];
   wellKnown: boolean;
 }
+
+/** One related entity, as returned by the paginated search-side relations route. */
+export interface RelationRecord {
+  id: string;
+  type: string;
+  value: string;
+  /** API field `@timestamp` — when the relation was recorded. */
+  timestamp: string;
+  lastSeen: string | null;
+  reputation: number;
+  accuracy: number;
+  tags: string[];
+  visibleBy: string[];
+  wellKnown: boolean;
+}

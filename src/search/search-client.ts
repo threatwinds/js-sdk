@@ -9,6 +9,7 @@ import {
   CountedPage,
   Comment,
   EntityHistoryRecord,
+  RelationRecord,
   NO_PARENT,
 } from './search-types';
 import { APIError } from '../core/errors';
@@ -213,6 +214,57 @@ export class SearchClient {
         visibleBy: Array.isArray(r.visibleBy) ? (r.visibleBy as string[]) : [],
         wellKnown: r.wellKnown === true,
       }));
+
+      const pages = raw.pages ?? 0;
+      return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
+    });
+  }
+
+  /**
+   * Related entities, newest relation first, paginated.
+   *
+   * NOT the same as `AnalyticsClient.getEntityRelations`, which returns a
+   * node/edge graph for visualization. This one is a time-ordered list with
+   * paging and a type filter, and is what the Associations tab renders.
+   */
+  async getEntityRelations(
+    entityId: string,
+    opts: PageOptions & { types?: string[]; signal?: AbortSignal } = {},
+  ): Promise<CountedPage<RelationRecord>> {
+    const page = opts.page ?? 1;
+    const queryParams = pageQuery({ ...opts, page });
+    if (opts.types?.length) queryParams.types = opts.types.join(',');
+
+    return emptyOn404(async () => {
+      const raw = (await this.client.request(
+        'GET',
+        `/api/search/v1/entity/${encodeURIComponent(entityId)}/relations`,
+        { signal: opts.signal, queryParams },
+      )) as { items?: number; pages?: number; results?: Record<string, unknown>[] };
+
+      const results = (raw.results ?? []).map((r) => {
+        const attrs = (r.attributes as Record<string, unknown>) ?? {};
+        const type = String(r.type ?? '');
+        // The value lives under a key named after the entity's own type.
+        const byType = attrs[type];
+        const value =
+          typeof byType === 'string'
+            ? byType
+            : (Object.values(attrs).find((v) => typeof v === 'string') as string | undefined) ?? '';
+
+        return {
+          id: String(r.id ?? ''),
+          type,
+          value,
+          timestamp: String(r['@timestamp'] ?? ''),
+          lastSeen: typeof r.lastSeen === 'string' && r.lastSeen !== '' ? r.lastSeen : null,
+          reputation: typeof r.reputation === 'number' ? r.reputation : 0,
+          accuracy: typeof r.accuracy === 'number' ? r.accuracy : 0,
+          tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+          visibleBy: Array.isArray(r.visibleBy) ? (r.visibleBy as string[]) : [],
+          wellKnown: r.wellKnown === true,
+        };
+      });
 
       const pages = raw.pages ?? 0;
       return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
