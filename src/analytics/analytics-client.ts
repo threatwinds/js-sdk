@@ -49,6 +49,17 @@ function pickString(src: Raw, ...keys: string[]): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** Like pickString, but preserves absence as null — dates must not become ''. */
+function pickStringOrNull(src: Raw, ...keys: string[]): string | null {
+  const value = pick(src, ...keys);
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+function pickStringArray(src: Raw, ...keys: string[]): string[] {
+  const value = pick(src, ...keys);
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
 /** Entities carry their value under a key named after their own type. */
 function entityValue(raw: Raw): string {
   const direct = pickString(raw, 'value');
@@ -75,6 +86,10 @@ function toAttributes(raw: Raw): EntityAttributes {
     worstReputation: pickString(raw, 'worstReputation', 'worst_reputation'),
     bestReputationScore: pickNumber(raw, 'bestReputationScore', 'best_reputation_score'),
     bestReputation: pickString(raw, 'bestReputation', 'best_reputation'),
+    firstSeen: pickStringOrNull(raw, 'firstSeen', 'first_seen'),
+    lastSeen: pickStringOrNull(raw, 'lastSeen', 'last_seen'),
+    label: pickString(raw, 'label'),
+    tags: pickStringArray(raw, 'tags'),
   };
 }
 
@@ -89,6 +104,8 @@ function toAssociations(raw: unknown): Association[] | null {
       // `reputation` is a human label ("Indefinable"); the numeric signal
       // consumers colour-code by lives in `reputation_score`.
       reputation: pickNumber(a, 'reputationScore', 'reputation_score'),
+      firstSeen: pickStringOrNull(a, 'firstSeen', 'first_seen'),
+      lastSeen: pickStringOrNull(a, 'lastSeen', 'last_seen'),
     };
   });
 }

@@ -10,6 +10,8 @@ export interface Association {
   type: string;
   value: string;
   reputation: number | null;
+  firstSeen: string | null;
+  lastSeen: string | null;
 }
 
 export interface Metadata {
@@ -33,6 +35,13 @@ export interface EntityAttributes {
   worstReputation: string;
   bestReputationScore: number | null;
   bestReputation: string;
+  /** The entity document's ingest timestamp. Null when the API omits it. */
+  firstSeen: string | null;
+  /** Falls back server-side to the ingest timestamp when never re-seen. */
+  lastSeen: string | null;
+  /** Human-readable type name, e.g. "IP Address". */
+  label: string;
+  tags: string[];
 }
 
 export interface EntityDetails {
