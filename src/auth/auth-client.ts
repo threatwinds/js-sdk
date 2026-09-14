@@ -212,6 +212,40 @@ export class AuthClient {
     ) as Promise<Acknowledgement>;
   }
 
+  /**
+   * Resolves a user id to their alias — the only human-readable identifier the
+   * platform exposes for an author.
+   *
+   * Comment and entity-history records carry a bare `userID`, so this is the
+   * join that turns `ea04845b-…` into `osmany`. The route is deliberately
+   * public and deliberately minimal: it returns the alias and nothing else.
+   *
+   * Returns null when the user cannot be resolved. Note the API says so with
+   * **400**, not 404 — `auth-api/controllers/user.go` raises ErrorNoUserWithID
+   * with status 400 when the user is gone or carries no alias. Both fold to
+   * null here; every other status still throws, so an outage cannot quietly
+   * render every author as unknown.
+   *
+   * Callers choose how to present an unresolved author. The console renders
+   * null as "Nemo".
+   */
+  async getUserAlias(userID: string, options: RequestOptions = {}): Promise<string | null> {
+    try {
+      const raw = (await this.client.request(
+        'GET',
+        `${BASE}/user/${encodeURIComponent(userID)}`,
+        options,
+      )) as { alias?: string } | null;
+      const alias = raw?.alias;
+      return typeof alias === 'string' && alias !== '' ? alias : null;
+    } catch (err) {
+      if (err instanceof APIError && (err.statusCode === 400 || err.statusCode === 404)) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
   async findUserByEmail(email: string, options: RequestOptions = {}): Promise<string | null> {
     try {
       const raw = (await this.client.request('GET', `${BASE}/user/by-email`, {
