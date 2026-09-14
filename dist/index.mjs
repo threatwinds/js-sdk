@@ -322,7 +322,32 @@ var ThreatWindsClient = class {
   }
 };
 
+// src/search/search-types.ts
+var NO_PARENT = "00000000-0000-0000-0000-000000000000";
+
 // src/search/search-client.ts
+var EMPTY_PAGE = { items: 0, pages: 0, results: [], next: null };
+async function emptyOn404(run) {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof APIError && err.statusCode === 404) {
+      return { ...EMPTY_PAGE, results: [] };
+    }
+    throw err;
+  }
+}
+function nextPage(page, pages) {
+  return page < pages ? page + 1 : null;
+}
+function pageQuery(opts) {
+  const q = {};
+  if (opts.page !== void 0) q.page = String(opts.page);
+  if (opts.limit !== void 0) q.limit = String(opts.limit);
+  if (opts.sort !== void 0) q.sort = opts.sort;
+  if (opts.order !== void 0) q.order = opts.order;
+  return q;
+}
 var SearchClient = class {
   constructor(client) {
     this.client = client;
@@ -386,6 +411,114 @@ var SearchClient = class {
       body
     });
   }
+  /**
+   * Comments on an entity, newest first.
+   *
+   * The API returns the indexed document verbatim, so field names are the
+   * document's (`comment`, `userID`, `@timestamp`) rather than the SDK's.
+   * An entity with no comments answers 404; that is an empty page here.
+   */
+  async listComments(entityId, opts = {}) {
+    const page = opts.page ?? 1;
+    return emptyOn404(async () => {
+      const raw = await this.client.request(
+        "GET",
+        `/api/search/v1/comments/${encodeURIComponent(entityId)}`,
+        { signal: opts.signal, queryParams: pageQuery({ ...opts, page }) }
+      );
+      const results = (raw.results ?? []).map((r) => ({
+        id: String(r.id ?? ""),
+        entityId: String(r.entityID ?? ""),
+        content: String(r.comment ?? ""),
+        author: String(r.userID ?? ""),
+        createdAt: String(r["@timestamp"] ?? ""),
+        parentId: String(r.parentID ?? NO_PARENT),
+        visibleBy: Array.isArray(r.visibleBy) ? r.visibleBy : []
+      }));
+      const pages = raw.pages ?? 0;
+      return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
+    });
+  }
+  /**
+   * Every reported version of one entity, newest first.
+   *
+   * Note the `.keyword` subfield: `entityID` is mapped as text (go-sdk's
+   * AddTextField attaches a keyword subfield to every text field for exactly
+   * this reason), so a term on the bare field matches nothing and a `match`
+   * tokenizes the id and returns thousands of unrelated rows. The advanced
+   * endpoint passes `query.must` straight through to OpenSearch, which is why
+   * a raw clause is the only way to filter by entity at all.
+   *
+   * This sits on the HEAVY rate-limit tier; call it lazily.
+   */
+  async getEntityHistory(entityId, opts = {}) {
+    const page = opts.page ?? 1;
+    return emptyOn404(async () => {
+      const raw = await this.client.request(
+        "POST",
+        "/api/search/v1/entities/history/advanced",
+        {
+          signal: opts.signal,
+          queryParams: pageQuery({ ...opts, page }),
+          body: { query: { must: [{ term: { "entityID.keyword": { value: entityId } } }] } }
+        }
+      );
+      const results = (raw.results ?? []).map((r) => ({
+        id: String(r.id ?? ""),
+        entityId: String(r.entityID ?? ""),
+        type: String(r.type ?? ""),
+        author: String(r.userID ?? ""),
+        timestamp: String(r["@timestamp"] ?? ""),
+        reputation: typeof r.reputation === "number" ? r.reputation : 0,
+        accuracy: typeof r.accuracy === "number" ? r.accuracy : 0,
+        attributes: r.attributes ?? {},
+        tags: Array.isArray(r.tags) ? r.tags : [],
+        visibleBy: Array.isArray(r.visibleBy) ? r.visibleBy : [],
+        wellKnown: r.wellKnown === true
+      }));
+      const pages = raw.pages ?? 0;
+      return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
+    });
+  }
+  /**
+   * Related entities, newest relation first, paginated.
+   *
+   * NOT the same as `AnalyticsClient.getEntityRelations`, which returns a
+   * node/edge graph for visualization. This one is a time-ordered list with
+   * paging and a type filter, and is what the Associations tab renders.
+   */
+  async getEntityRelations(entityId, opts = {}) {
+    const page = opts.page ?? 1;
+    const queryParams = pageQuery({ ...opts, page });
+    if (opts.types?.length) queryParams.types = opts.types.join(",");
+    return emptyOn404(async () => {
+      const raw = await this.client.request(
+        "GET",
+        `/api/search/v1/entity/${encodeURIComponent(entityId)}/relations`,
+        { signal: opts.signal, queryParams }
+      );
+      const results = (raw.results ?? []).map((r) => {
+        const attrs = r.attributes ?? {};
+        const type = String(r.type ?? "");
+        const byType = attrs[type];
+        const value = typeof byType === "string" ? byType : Object.values(attrs).find((v) => typeof v === "string") ?? "";
+        return {
+          id: String(r.id ?? ""),
+          type,
+          value,
+          timestamp: String(r["@timestamp"] ?? ""),
+          lastSeen: typeof r.lastSeen === "string" && r.lastSeen !== "" ? r.lastSeen : null,
+          reputation: typeof r.reputation === "number" ? r.reputation : 0,
+          accuracy: typeof r.accuracy === "number" ? r.accuracy : 0,
+          tags: Array.isArray(r.tags) ? r.tags : [],
+          visibleBy: Array.isArray(r.visibleBy) ? r.visibleBy : [],
+          wellKnown: r.wellKnown === true
+        };
+      });
+      const pages = raw.pages ?? 0;
+      return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
+    });
+  }
 };
 
 // src/analytics/analytics-client.ts
@@ -404,6 +537,14 @@ function pickNumber(src, ...keys) {
 function pickString(src, ...keys) {
   const value = pick(src, ...keys);
   return typeof value === "string" ? value : "";
+}
+function pickStringOrNull(src, ...keys) {
+  const value = pick(src, ...keys);
+  return typeof value === "string" && value !== "" ? value : null;
+}
+function pickStringArray(src, ...keys) {
+  const value = pick(src, ...keys);
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
 }
 function entityValue(raw) {
   const direct = pickString(raw, "value");
@@ -428,7 +569,11 @@ function toAttributes(raw) {
     worstReputationScore: pickNumber(raw, "worstReputationScore", "worst_reputation_score"),
     worstReputation: pickString(raw, "worstReputation", "worst_reputation"),
     bestReputationScore: pickNumber(raw, "bestReputationScore", "best_reputation_score"),
-    bestReputation: pickString(raw, "bestReputation", "best_reputation")
+    bestReputation: pickString(raw, "bestReputation", "best_reputation"),
+    firstSeen: pickStringOrNull(raw, "firstSeen", "first_seen"),
+    lastSeen: pickStringOrNull(raw, "lastSeen", "last_seen"),
+    label: pickString(raw, "label"),
+    tags: pickStringArray(raw, "tags")
   };
 }
 function toAssociations(raw) {
@@ -441,7 +586,9 @@ function toAssociations(raw) {
       value: entityValue(a),
       // `reputation` is a human label ("Indefinable"); the numeric signal
       // consumers colour-code by lives in `reputation_score`.
-      reputation: pickNumber(a, "reputationScore", "reputation_score")
+      reputation: pickNumber(a, "reputationScore", "reputation_score"),
+      firstSeen: pickStringOrNull(a, "firstSeen", "first_seen"),
+      lastSeen: pickStringOrNull(a, "lastSeen", "last_seen")
     };
   });
 }
@@ -533,6 +680,10 @@ var AnalyticsClient = class {
   }
   /**
    * Relationship graph around an entity.
+   *
+   * Not to be confused with `SearchClient.getEntityRelations`, which returns a
+   * paginated, time-ordered list of related entities. This one returns the
+   * graph. Each name matches the endpoint it wraps.
    *
    * The API returns the edge list under `relations`; earlier versions of this
    * method read `edges`, which does not exist in the response and so always
@@ -1422,14 +1573,23 @@ var IngestClient = class {
     const raw = await this.client.request("GET", `${BASE4}/definitions`, options);
     return Array.isArray(raw) ? raw : [];
   }
+  /**
+   * Posts a comment on an entity. Requires a KYC-verified account.
+   *
+   * Field names here are the API's, not the SDK's: `ingest-api` binds
+   * `entityID` / `comment` / `parentID`. An earlier version sent the SDK's own
+   * camelCase names, so every comment posted was empty and rejected.
+   */
   async createComment(request, options = {}) {
+    const body = {
+      entityID: request.entityId,
+      comment: request.content
+    };
+    if (request.parentId) body.parentID = request.parentId;
+    if (request.visibleBy?.length) body.visibleBy = request.visibleBy;
     return this.client.request("POST", `${BASE4}/comment`, {
       ...options,
-      body: {
-        entityId: request.entityId,
-        content: request.content,
-        parentId: request.parentId ?? null
-      }
+      body
     });
   }
   /** Schedules a scan of an IP or hostname. Requires the `user` role. */
@@ -2075,6 +2235,6 @@ function detectIndicatorType(raw) {
 // src/casework/casework-types.ts
 var UNFILED = "unfiled";
 
-export { APIError, AiClient, AnalyticsClient, AuthClient, AuthError, BillingClient, CaseworkClient, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, FeedsClient, IngestClient, NO_BACKENDS_GRACE_SECONDS, RateLimitError, SDKError, SearchClient, ThreatWindsClient, ThreatWindsError, UNFILED, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { APIError, AiClient, AnalyticsClient, AuthClient, AuthError, BillingClient, CaseworkClient, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, FeedsClient, IngestClient, NO_BACKENDS_GRACE_SECONDS, NO_PARENT, RateLimitError, SDKError, SearchClient, ThreatWindsClient, ThreatWindsError, UNFILED, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map

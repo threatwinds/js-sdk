@@ -200,6 +200,67 @@ interface AggregationResult {
 interface AdvancedSearchResponse {
     aggregations: Record<string, AggregationResult>;
 }
+/** A page that also reports the API's total match count. */
+type CountedPage<T> = PaginatedResponse<T> & {
+    items: number;
+};
+/** The all-zeros UUID the API uses to mean "no parent". */
+declare const NO_PARENT = "00000000-0000-0000-0000-000000000000";
+/**
+ * One comment on an entity.
+ *
+ * Shape mirrors the indexed document (go-sdk `entities.Comment`), which the
+ * search API returns verbatim plus the hit id. `author` is an opaque user
+ * UUID — the platform stores no display name anywhere.
+ */
+interface Comment {
+    id: string;
+    entityId: string;
+    /** API field `comment`. */
+    content: string;
+    /** API field `userID`. Opaque UUID, never a name. */
+    author: string;
+    /** API field `@timestamp`. Always written server-side at ingest. */
+    createdAt: string;
+    /** `NO_PARENT` for a top-level comment; never absent. */
+    parentId: string;
+    visibleBy: string[];
+}
+/**
+ * One report of an entity, as stored in the history index.
+ *
+ * History records are the *unconsolidated* documents — one per submission —
+ * which is why reputation and accuracy differ between rows for the same entity.
+ */
+interface EntityHistoryRecord {
+    id: string;
+    entityId: string;
+    type: string;
+    /** API field `userID`. Opaque UUID; no display name exists. */
+    author: string;
+    /** API field `@timestamp`. */
+    timestamp: string;
+    reputation: number;
+    accuracy: number;
+    attributes: Record<string, unknown>;
+    tags: string[];
+    visibleBy: string[];
+    wellKnown: boolean;
+}
+/** One related entity, as returned by the paginated search-side relations route. */
+interface RelationRecord {
+    id: string;
+    type: string;
+    value: string;
+    /** API field `@timestamp` — when the relation was recorded. */
+    timestamp: string;
+    lastSeen: string | null;
+    reputation: number;
+    accuracy: number;
+    tags: string[];
+    visibleBy: string[];
+    wellKnown: boolean;
+}
 
 type SimpleSearchParams = {
     query: string;
@@ -208,6 +269,13 @@ type SimpleSearchParams = {
         excludes?: string[];
     };
 } & SimpleSearchOptions;
+/** Page options common to every paginated search read. */
+interface PageOptions {
+    page?: number;
+    limit?: number;
+    sort?: string;
+    order?: 'asc' | 'desc';
+}
 declare class SearchClient {
     private client;
     constructor(client: ThreatWindsClient);
@@ -237,6 +305,42 @@ declare class SearchClient {
      * truncates results.
      */
     advancedSearch(body: AdvancedSearchBody, options?: RequestOptions): Promise<AdvancedSearchResponse>;
+    /**
+     * Comments on an entity, newest first.
+     *
+     * The API returns the indexed document verbatim, so field names are the
+     * document's (`comment`, `userID`, `@timestamp`) rather than the SDK's.
+     * An entity with no comments answers 404; that is an empty page here.
+     */
+    listComments(entityId: string, opts?: PageOptions & {
+        signal?: AbortSignal;
+    }): Promise<CountedPage<Comment>>;
+    /**
+     * Every reported version of one entity, newest first.
+     *
+     * Note the `.keyword` subfield: `entityID` is mapped as text (go-sdk's
+     * AddTextField attaches a keyword subfield to every text field for exactly
+     * this reason), so a term on the bare field matches nothing and a `match`
+     * tokenizes the id and returns thousands of unrelated rows. The advanced
+     * endpoint passes `query.must` straight through to OpenSearch, which is why
+     * a raw clause is the only way to filter by entity at all.
+     *
+     * This sits on the HEAVY rate-limit tier; call it lazily.
+     */
+    getEntityHistory(entityId: string, opts?: PageOptions & {
+        signal?: AbortSignal;
+    }): Promise<CountedPage<EntityHistoryRecord>>;
+    /**
+     * Related entities, newest relation first, paginated.
+     *
+     * NOT the same as `AnalyticsClient.getEntityRelations`, which returns a
+     * node/edge graph for visualization. This one is a time-ordered list with
+     * paging and a type filter, and is what the Associations tab renders.
+     */
+    getEntityRelations(entityId: string, opts?: PageOptions & {
+        types?: string[];
+        signal?: AbortSignal;
+    }): Promise<CountedPage<RelationRecord>>;
 }
 
 interface Geolocation {
@@ -250,6 +354,8 @@ interface Association {
     type: string;
     value: string;
     reputation: number | null;
+    firstSeen: string | null;
+    lastSeen: string | null;
 }
 interface Metadata {
     [key: string]: string;
@@ -270,6 +376,13 @@ interface EntityAttributes {
     worstReputation: string;
     bestReputationScore: number | null;
     bestReputation: string;
+    /** The entity document's ingest timestamp. Null when the API omits it. */
+    firstSeen: string | null;
+    /** Falls back server-side to the ingest timestamp when never re-seen. */
+    lastSeen: string | null;
+    /** Human-readable type name, e.g. "IP Address". */
+    label: string;
+    tags: string[];
 }
 interface EntityDetails {
     attributes: EntityAttributes;
@@ -394,6 +507,10 @@ declare class AnalyticsClient {
     getEntityDetails(id: string, options?: RequestOptions): Promise<EntityDetails>;
     /**
      * Relationship graph around an entity.
+     *
+     * Not to be confused with `SearchClient.getEntityRelations`, which returns a
+     * paginated, time-ordered list of related entities. This one returns the
+     * graph. Each name matches the endpoint it wraps.
      *
      * The API returns the edge list under `relations`; earlier versions of this
      * method read `edges`, which does not exist in the response and so always
@@ -1264,17 +1381,12 @@ interface EntityDefinition {
 interface CommentRequest {
     entityId: string;
     content: string;
+    /** Omit for a top-level comment. */
     parentId?: string | null;
+    /** Defaults server-side to the poster's own groups. */
+    visibleBy?: string[];
 }
-interface Comment {
-    id: string;
-    entityId: string;
-    content: string;
-    author: string;
-    authorName: string;
-    createdAt: string;
-    parentId: string | null;
-}
+
 interface ScanRequest {
     target: string;
     type: 'ip' | 'fqdn';
@@ -1320,6 +1432,13 @@ declare class IngestClient {
      * `type` values and the attributes each accepts.
      */
     getDefinitions(options?: RequestOptions): Promise<EntityDefinition[]>;
+    /**
+     * Posts a comment on an entity. Requires a KYC-verified account.
+     *
+     * Field names here are the API's, not the SDK's: `ingest-api` binds
+     * `entityID` / `comment` / `parentID`. An earlier version sent the SDK's own
+     * camelCase names, so every comment posted was empty and rejected.
+     */
     createComment(request: CommentRequest, options?: RequestOptions): Promise<Comment>;
     /** Schedules a scan of an IP or hostname. Requires the `user` role. */
     createScan(request: ScanRequest, options?: RequestOptions): Promise<ScanResult>;
@@ -1789,4 +1908,4 @@ declare function detectIndicatorTypes(raw: string): IndicatorType[];
 /** Convenience wrapper returning only the single most likely type. */
 declare function detectIndicatorType(raw: string): IndicatorType | null;
 
-export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type DraftEntity, type DraftInput, type DraftOutcome, type DraftRelation, type DraftState, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EndpointKind, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, type PaginatedResponse, type PaginationParams, type PinEntityInput, type PublishResult, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationInput, type RelationNode, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type SkippedRelation, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CountedPage, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type DraftEntity, type DraftInput, type DraftOutcome, type DraftRelation, type DraftState, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EndpointKind, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityHistoryRecord, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, NO_PARENT, type PageOptions, type PaginatedResponse, type PaginationParams, type PinEntityInput, type PublishResult, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationInput, type RelationNode, type RelationRecord, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type SkippedRelation, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
