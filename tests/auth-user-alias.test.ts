@@ -45,16 +45,16 @@ describe('AuthClient.getUserAlias', () => {
     expect(mockFetch.mock.calls[0][0]).toContain(`/api/auth/v2/user/${ID}`);
   });
 
-  // The API answers 400 (not 404) when the user is gone or carries no alias —
-  // auth-api/controllers/user.go raises ErrorNoUserWithID with status 400 for
-  // an empty alias. Both statuses mean "unresolvable" to a caller.
-  it('returns null on 400, the API\'s "no such user / no alias" answer', async () => {
-    respond(400, { error: { message: 'no user with that id' } });
+  // Unresolvable arrives as two different statuses, both confirmed live:
+  // 404 when the account does not exist, and 400 when it exists but carries no
+  // alias (auth-api/controllers/user.go raises ErrorNoUserWithID as a 400).
+  it('returns null on 404 — no such account', async () => {
+    respond(404, { error: { message: 'the user account was not found' } });
     expect(await auth().getUserAlias(ID)).toBeNull();
   });
 
-  it('returns null on 404 as well', async () => {
-    respond(404, { error: { message: 'not found' } });
+  it('returns null on 400 — account exists but has no alias', async () => {
+    respond(400, { error: { message: 'no user with that id' } });
     expect(await auth().getUserAlias(ID)).toBeNull();
   });
 

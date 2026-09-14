@@ -1449,11 +1449,16 @@ var AuthClient = class {
    * join that turns `ea04845b-…` into `osmany`. The route is deliberately
    * public and deliberately minimal: it returns the alias and nothing else.
    *
-   * Returns null when the user cannot be resolved. Note the API says so with
-   * **400**, not 404 — `auth-api/controllers/user.go` raises ErrorNoUserWithID
-   * with status 400 when the user is gone or carries no alias. Both fold to
-   * null here; every other status still throws, so an outage cannot quietly
-   * render every author as unknown.
+   * Returns null when the user cannot be resolved, which the API signals two
+   * different ways — both verified live:
+   *
+   * - **404** "the user account was not found" — no such account.
+   * - **400** — the account exists but carries no alias
+   *   (`auth-api/controllers/user.go` raises ErrorNoUserWithID for an empty
+   *   alias, which is a 400 rather than the 404 you would expect).
+   *
+   * Both fold to null. Every other status still throws, so an outage cannot
+   * quietly render every author as unknown.
    *
    * Callers choose how to present an unresolved author. The console renders
    * null as "Nemo".
