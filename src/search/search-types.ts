@@ -135,3 +135,25 @@ export interface Comment {
   parentId: string;
   visibleBy: string[];
 }
+
+/**
+ * One report of an entity, as stored in the history index.
+ *
+ * History records are the *unconsolidated* documents — one per submission —
+ * which is why reputation and accuracy differ between rows for the same entity.
+ */
+export interface EntityHistoryRecord {
+  id: string;
+  entityId: string;
+  type: string;
+  /** API field `userID`. Opaque UUID; no display name exists. */
+  author: string;
+  /** API field `@timestamp`. */
+  timestamp: string;
+  reputation: number;
+  accuracy: number;
+  attributes: Record<string, unknown>;
+  tags: string[];
+  visibleBy: string[];
+  wellKnown: boolean;
+}

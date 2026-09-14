@@ -8,6 +8,7 @@ import {
   AdvancedSearchResponse,
   CountedPage,
   Comment,
+  EntityHistoryRecord,
   NO_PARENT,
 } from './search-types';
 import { APIError } from '../core/errors';
@@ -164,6 +165,53 @@ export class SearchClient {
         createdAt: String(r['@timestamp'] ?? ''),
         parentId: String(r.parentID ?? NO_PARENT),
         visibleBy: Array.isArray(r.visibleBy) ? (r.visibleBy as string[]) : [],
+      }));
+
+      const pages = raw.pages ?? 0;
+      return { items: raw.items ?? 0, pages, results, next: nextPage(page, pages) };
+    });
+  }
+
+  /**
+   * Every reported version of one entity, newest first.
+   *
+   * Note the `.keyword` subfield: `entityID` is mapped as text (go-sdk's
+   * AddTextField attaches a keyword subfield to every text field for exactly
+   * this reason), so a term on the bare field matches nothing and a `match`
+   * tokenizes the id and returns thousands of unrelated rows. The advanced
+   * endpoint passes `query.must` straight through to OpenSearch, which is why
+   * a raw clause is the only way to filter by entity at all.
+   *
+   * This sits on the HEAVY rate-limit tier; call it lazily.
+   */
+  async getEntityHistory(
+    entityId: string,
+    opts: PageOptions & { signal?: AbortSignal } = {},
+  ): Promise<CountedPage<EntityHistoryRecord>> {
+    const page = opts.page ?? 1;
+    return emptyOn404(async () => {
+      const raw = (await this.client.request(
+        'POST',
+        '/api/search/v1/entities/history/advanced',
+        {
+          signal: opts.signal,
+          queryParams: pageQuery({ ...opts, page }),
+          body: { query: { must: [{ term: { 'entityID.keyword': { value: entityId } } }] } },
+        },
+      )) as { items?: number; pages?: number; results?: Record<string, unknown>[] };
+
+      const results = (raw.results ?? []).map((r) => ({
+        id: String(r.id ?? ''),
+        entityId: String(r.entityID ?? ''),
+        type: String(r.type ?? ''),
+        author: String(r.userID ?? ''),
+        timestamp: String(r['@timestamp'] ?? ''),
+        reputation: typeof r.reputation === 'number' ? r.reputation : 0,
+        accuracy: typeof r.accuracy === 'number' ? r.accuracy : 0,
+        attributes: (r.attributes as Record<string, unknown>) ?? {},
+        tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        visibleBy: Array.isArray(r.visibleBy) ? (r.visibleBy as string[]) : [],
+        wellKnown: r.wellKnown === true,
       }));
 
       const pages = raw.pages ?? 0;
