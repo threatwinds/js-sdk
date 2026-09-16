@@ -1360,14 +1360,27 @@ interface IngestAssociation {
     mode: AssociationMode;
     type: string;
     /** Must include a key matching `type`. */
-    attributes: Record<string, string>;
+    attributes: Record<string, string | number>;
+    tags?: string[];
+    /**
+     * Intersected with the parent's. An empty intersection returns 403 for the
+     * whole submission, not just this association.
+     */
+    visibleBy?: string[];
     /** Associations nest recursively. */
     associations?: IngestAssociation[];
 }
 interface IngestEntity {
     type: string;
-    /** Required. Must include a key matching `type` carrying the entity's value. */
-    attributes: Record<string, string>;
+    /**
+     * Required. Must include a key matching `type` carrying the entity's value.
+     *
+     * Ten attributes are Go `*int`/`*float64` and must be sent as JSON numbers:
+     * aba-rtn, asn, bank-account-nr, bin, breach-count, cc-number,
+     * accuracy-radius, latitude, longitude, size-in-bytes. `port` is a string
+     * despite its name — its example is "443/tcp".
+     */
+    attributes: Record<string, string | number>;
     associations?: IngestAssociation[];
     /** -3 (malicious) to 3 (benign); 0 is neutral. */
     reputation?: number;
@@ -1386,20 +1399,37 @@ interface AssociationRequest {
     entityID: string;
     relatedEntityID: string;
 }
-/** One attribute a given entity type may carry. */
-interface EntityAttributeDefinition {
-    type: string;
-    label: string;
-    description: string;
-    dataType: string;
-}
-/** Schema for one of the supported entity types. */
+/**
+ * Schema for one supported entity type.
+ *
+ * Recursive, because Go's `Definition` is: `Attributes []Definition` is the
+ * same struct again, so a `file`'s `md5` attribute carries its own attributes,
+ * dataType and example. This was previously modelled as a separate flat
+ * `EntityAttributeDefinition` with four fields, which typed away everything
+ * below the first level — `getDefinitions` is a cast, so the data was arriving
+ * and being discarded by the declaration alone.
+ *
+ * `attributes` is advisory, not enforced: ingest-api validates an attribute
+ * name against the global type list and never checks it belongs to the parent
+ * type. It says which fields are worth offering, not which are permitted.
+ */
 interface EntityDefinition {
     type: string;
     label: string;
     description: string;
+    /**
+     * A human-readable name, not an enum: "Integer", "String", "SHA-1",
+     * "Case-sensitive string", "UUID|MD5|SHA3-256". Matching on "INTEGER"
+     * matches nothing.
+     */
     dataType: string;
-    attributes?: EntityAttributeDefinition[];
+    /** Sub-attributes worth offering for this type. */
+    attributes?: EntityDefinition[];
+    associations?: EntityDefinition[];
+    /** Attribute names this type recommends spinning out into linked entities. */
+    correlate?: string[];
+    tags?: string[];
+    example?: IngestEntity;
 }
 interface CommentRequest {
     entityId: string;
@@ -1931,4 +1961,4 @@ declare function detectIndicatorTypes(raw: string): IndicatorType[];
 /** Convenience wrapper returning only the single most likely type. */
 declare function detectIndicatorType(raw: string): IndicatorType | null;
 
-export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CountedPage, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type DraftEntity, type DraftInput, type DraftOutcome, type DraftRelation, type DraftState, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EndpointKind, type EntityAttributeDefinition, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityHistoryRecord, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, NO_PARENT, type PageOptions, type PaginatedResponse, type PaginationParams, type PinEntityInput, type PublishResult, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationInput, type RelationNode, type RelationRecord, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type SkippedRelation, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };
+export { type AIModel, APIError, type APIResponse, type Acknowledgement, type AddMemberRequest, type AdvancedSearchBody, type AdvancedSearchResponse, type AggregationBucket, type AggregationResult, type Aggs, AiClient, type Alert, type AlertPage, type AnalyticsBucket, AnalyticsClient, type AnalyticsTimeBucket, type AssistantMessage, type Association, type AssociationMode, type AssociationRequest, type Attribution, AuthClient, AuthError, type BillingAddress, BillingClient, type Bool, type CanvasPanel, type CanvasPayload, type Case, type CaseEntity, type CaseInput, type CaseNote, type CaseSeverity, type CaseStatus, CaseworkClient, type ChatCompletionChoice, type ChatCompletionRequest, type ChatCompletionResponse, type ChatCompletionResult, type ChatMessage, type ChatRole, type ChatStreamDelta, type ClientConfig, type Comment, type CommentRequest, type Conversation, type ConversationInput, type ToolCall as ConversationToolCall, type CorpusOverview, type CountedPage, type CreateCustomerRequest, type CreateCustomerResponse, type CreateEmailResponse, type Customer, type CustomerMember, type CustomerMembersPage, type CustomerPortalSession, type CustomerRole, type CustomerTier, DEFAULT_WARMUP_BUDGET_SECONDS, DefaultEndpoint, DefaultMaxRetries, DefaultTimeout, type DraftEntity, type DraftInput, type DraftOutcome, type DraftRelation, type DraftState, type Email, type EmbeddingsRequest, type EmbeddingsResponse, type EndpointKind, type EntityAttributes, type EntityDefinition, type EntityDetails, type EntityHistoryRecord, type EntityLookupRequest, type EntityObject, type EntityRecord, type EntityResults, type ExtendedMetadata, type FeatureUsage, type Feed, type FeedList, type FeedListOptions, FeedsClient, type Geolocation, type IndicatorType, type IngestAck, type IngestAssociation, IngestClient, type IngestEntity, type KeyPair, type KeyPairRequest, type LimitDefinition, type LiveFeedHandlers, type LiveFeedOptions, type LiveFeedSubscription, type MatchKind, type Metadata, type ModelCapability, type ModelLimits, NO_BACKENDS_GRACE_SECONDS, NO_PARENT, type PageOptions, type PaginatedResponse, type PaginationParams, type PinEntityInput, type PublishResult, type QueryClause, type QuotaReport, RateLimitError, type RecentEntity, type RecentFeed, type RelationEdge, type RelationInput, type RelationNode, type RelationRecord, type RelationsResult, type RequestOptions, SDKError, type SavedSearch, type ScanRequest, type ScanResult, SearchClient, type ServiceLimits, type ServiceUsage, type SessionCreationRequest, type SessionCreationResponse, type SessionInfo, type SessionKind, type SessionSummary, type SessionVerificationRequest, type SignUpRequest, type SimpleSearchOptions, type SimpleSearchRequest, type SkippedRelation, type Source, type SpeechFormat, type SpeechRequest, type Subscription, type SystemMessage, type Terms, type ThreatEvent, type ThreatEventType, ThreatWindsClient, ThreatWindsError, type TierLimits, type TokenCountRequest, type TokenCountResponse, type ToolCall$1 as ToolCall, type ToolDefinition, type ToolFunctionDefinition, type ToolMessage, type TranscriptionRequest, type TranscriptionResponse, type TransferOwnershipRequest, type Turn, UNFILED, type UpgradeToProRequest, type UpgradeToProResponse, type Usage, type UsageReport, type UserLookupResponse, type UserMessage, type VerificationAttempt, type VerificationCodeRequest, type VerificationSession, type VerificationState, type VerificationStatus, type WarmupOptions, type WarmupProgress, type Watchlist, type WatchlistInput, type WatchlistItem, type WatchlistItemInput, detectIndicatorType, detectIndicatorTypes, retryStreamWarmup, warmupDecision, withWarmup };

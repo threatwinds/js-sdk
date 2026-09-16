@@ -178,7 +178,6 @@ export type {
   IngestAck,
   AssociationRequest,
   EntityDefinition,
-  EntityAttributeDefinition,
   Comment,
   CommentRequest,
   ScanRequest,

@@ -18,15 +18,28 @@ export interface IngestAssociation {
   mode: AssociationMode;
   type: string;
   /** Must include a key matching `type`. */
-  attributes: Record<string, string>;
+  attributes: Record<string, string | number>;
+  tags?: string[];
+  /**
+   * Intersected with the parent's. An empty intersection returns 403 for the
+   * whole submission, not just this association.
+   */
+  visibleBy?: string[];
   /** Associations nest recursively. */
   associations?: IngestAssociation[];
 }
 
 export interface IngestEntity {
   type: string;
-  /** Required. Must include a key matching `type` carrying the entity's value. */
-  attributes: Record<string, string>;
+  /**
+   * Required. Must include a key matching `type` carrying the entity's value.
+   *
+   * Ten attributes are Go `*int`/`*float64` and must be sent as JSON numbers:
+   * aba-rtn, asn, bank-account-nr, bin, breach-count, cc-number,
+   * accuracy-radius, latitude, longitude, size-in-bytes. `port` is a string
+   * despite its name — its example is "443/tcp".
+   */
+  attributes: Record<string, string | number>;
   associations?: IngestAssociation[];
   /** -3 (malicious) to 3 (benign); 0 is neutral. */
   reputation?: number;
@@ -48,21 +61,37 @@ export interface AssociationRequest {
   relatedEntityID: string;
 }
 
-/** One attribute a given entity type may carry. */
-export interface EntityAttributeDefinition {
-  type: string;
-  label: string;
-  description: string;
-  dataType: string;
-}
-
-/** Schema for one of the supported entity types. */
+/**
+ * Schema for one supported entity type.
+ *
+ * Recursive, because Go's `Definition` is: `Attributes []Definition` is the
+ * same struct again, so a `file`'s `md5` attribute carries its own attributes,
+ * dataType and example. This was previously modelled as a separate flat
+ * `EntityAttributeDefinition` with four fields, which typed away everything
+ * below the first level — `getDefinitions` is a cast, so the data was arriving
+ * and being discarded by the declaration alone.
+ *
+ * `attributes` is advisory, not enforced: ingest-api validates an attribute
+ * name against the global type list and never checks it belongs to the parent
+ * type. It says which fields are worth offering, not which are permitted.
+ */
 export interface EntityDefinition {
   type: string;
   label: string;
   description: string;
+  /**
+   * A human-readable name, not an enum: "Integer", "String", "SHA-1",
+   * "Case-sensitive string", "UUID|MD5|SHA3-256". Matching on "INTEGER"
+   * matches nothing.
+   */
   dataType: string;
-  attributes?: EntityAttributeDefinition[];
+  /** Sub-attributes worth offering for this type. */
+  attributes?: EntityDefinition[];
+  associations?: EntityDefinition[];
+  /** Attribute names this type recommends spinning out into linked entities. */
+  correlate?: string[];
+  tags?: string[];
+  example?: IngestEntity;
 }
 
 export interface CommentRequest {
