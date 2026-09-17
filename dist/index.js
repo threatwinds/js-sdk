@@ -1791,7 +1791,13 @@ function toToolCall(raw) {
   const t = asRecord2(raw);
   return {
     name: str(t, "name"),
-    args: toolArgs(t.args)
+    args: toolArgs(t.args),
+    // Left absent rather than defaulted to '' when the field is missing. Turns
+    // written before it existed carry no result, and "the tool returned
+    // nothing" has to stay distinguishable from "nobody recorded what it
+    // returned" — otherwise a replayed history tells the model it was shown an
+    // empty result when it was shown one that is simply gone.
+    ...typeof t.result === "string" ? { result: t.result } : {}
   };
 }
 function toTurn(raw) {

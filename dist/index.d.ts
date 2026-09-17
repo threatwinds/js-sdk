@@ -1636,6 +1636,19 @@ declare const UNFILED = "unfiled";
 interface ToolCall {
     name: string;
     args: string;
+    /**
+     * The tool's output as it was fed back to the model — the caller's summary,
+     * not the raw response.
+     *
+     * Optional because turns written before this field existed carry no result,
+     * and that has to stay distinguishable from a tool that genuinely returned
+     * nothing: replaying `''` into a resumed conversation tells the model it was
+     * shown an empty result when it was shown one that is simply not recorded.
+     *
+     * Without it a resumed thread replays as question-and-answer text alone, so
+     * the model keeps the conclusions it drew and loses what it drew them from.
+     */
+    result?: string;
 }
 /**
  * A durable question-and-answer thread.
