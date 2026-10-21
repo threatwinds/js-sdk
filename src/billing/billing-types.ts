@@ -61,15 +61,32 @@ export interface CustomerMembersPage {
   items: number
 }
 
+/** One tier in a customer's stacked subscription set. */
+export interface TierEntry {
+  id: string
+  name: string
+  description: string
+  status: string
+  stacks: number
+}
+
 /** The caller's current plan, and whether a trial is still on the table. */
 export interface CustomerTier {
   customerId: string
+  /** Per-tier breakdown of the customer's active subscriptions. */
+  tiers?: TierEntry[]
   tierId: string
+  /** Joined "A + B" when stacked, e.g. "Business + 200 Targets per month". */
   tierName: string
+  /** Deduped tier names in tier sort order. */
+  tierNames?: string[]
+  /** True when the customer holds no non-Free effective subscription. */
+  isFree?: boolean
   description: string
   isActive: boolean
   /** `active`, `trialing`, `past_due`, `canceled`, `unpaid`, … */
   subscriptionStatus: string
+  /** SUM of stacks across active subs. */
   stacks: number
   /** Once true the 30-day trial is spent; upgrading then bills immediately. */
   trialUsed: boolean
@@ -100,13 +117,21 @@ export interface LimitDefinition {
 /** Limit definitions keyed by feature, grouped by service. */
 export interface TierLimits {
   customerId: string
+  tiers?: TierEntry[]
+  /** Joined "A + B" when stacked. */
   tierName: string
+  tierNames?: string[]
+  isFree?: boolean
   limits: Record<string, Record<string, LimitDefinition>>
 }
 
 export interface ServiceLimits {
   customerId: string
+  tiers?: TierEntry[]
+  /** Joined "A + B" when stacked. */
   tierName: string
+  tierNames?: string[]
+  isFree?: boolean
   serviceName: string
   limits: Record<string, LimitDefinition>
 }
