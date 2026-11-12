@@ -147,4 +147,29 @@ describe('AnalyticsClient.getEntityDetails field mapping', () => {
     expect(geo?.asn).toBeNull();
     expect(geo?.aso).toBeNull();
   });
+
+  it('treats a zero ASN as absent, since the Go side emits 0 for a missing int', async () => {
+    respond({
+      attributes: { id: 'ip-abc', type: 'ip', ip: '8.8.8.8' },
+      geolocations: [
+        {
+          object: '8.8.8.0/23',
+          latitude: 37.751,
+          longitude: -97.822,
+          accuracy_radius: 1000,
+          country: 'United States',
+          asn: 0,
+          aso: '',
+        },
+      ],
+    });
+
+    const d = await analytics().getEntityDetails('ip-abc');
+
+    const geo = d.geolocations?.[0];
+    expect(geo).toBeDefined();
+    expect(geo?.asn).toBeNull();
+    expect(geo?.aso).toBeNull();
+    expect(geo?.country).toBe('United States');
+  });
 });

@@ -606,7 +606,9 @@ function toGeolocations(raw) {
       ip: pick(g, "ip", "object") ?? null,
       city: pickStringOrNull(g, "city"),
       country: pickStringOrNull(g, "country"),
-      asn: pickNumber(g, "asn"),
+      // The Go side is a plain int with no pointer, so an absent ASN is 0 —
+      // and ASN 0 does not exist. Keep 0 out of the type contract.
+      asn: pickNumber(g, "asn") === 0 ? null : pickNumber(g, "asn"),
       aso: pickStringOrNull(g, "aso")
     };
   }).filter(
