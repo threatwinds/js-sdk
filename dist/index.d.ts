@@ -348,6 +348,14 @@ interface Geolocation {
     longitude: number;
     radius: number;
     ip: string | null;
+    /** Human-readable location, e.g. "Mountain View". Null when unresolved. */
+    city: string | null;
+    /** Human-readable location, e.g. "United States". Null when unresolved. */
+    country: string | null;
+    /** Autonomous System Number, e.g. 15169. Null when unresolved. */
+    asn: number | null;
+    /** Autonomous System Origin name, e.g. "GOOGLE-AS-15169". Null when unresolved. */
+    aso: string | null;
 }
 interface Association {
     id: string;

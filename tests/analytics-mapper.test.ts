@@ -83,4 +83,68 @@ describe('AnalyticsClient.getEntityDetails field mapping', () => {
     expect(d.latestAssociations?.[0].firstSeen).toBe('2023-07-15T13:31:01Z');
     expect(d.latestAssociations?.[0].lastSeen).toBe('2025-08-22T11:59:20Z');
   });
+
+  it('keeps city, country, asn and aso on each geolocation', async () => {
+    respond({
+      attributes: { id: 'ip-abc', type: 'ip', ip: '8.8.8.8' },
+      geolocations: [
+        {
+          object: '8.8.8.0/24',
+          latitude: 37.386,
+          longitude: -122.083,
+          accuracy_radius: 1000,
+          city: 'Mountain View',
+          country: 'United States',
+          asn: 15169,
+          aso: 'GOOGLE-AS-15169',
+        },
+      ],
+    });
+
+    const d = await analytics().getEntityDetails('ip-abc');
+
+    const geo = d.geolocations?.[0];
+    expect(geo).toBeDefined();
+    expect(geo?.ip).toBe('8.8.8.0/24');
+    expect(geo?.city).toBe('Mountain View');
+    expect(geo?.country).toBe('United States');
+    expect(geo?.asn).toBe(15169);
+    expect(geo?.aso).toBe('GOOGLE-AS-15169');
+  });
+
+  it('keeps a geolocation that has no coordinates but carries network attribution', async () => {
+    // The API emits unresolved places as 0,0 with the network fields intact.
+    // Dropping them is exactly what hid ASN/ASO from the details page.
+    respond({
+      attributes: { id: 'ip-abc', type: 'ip', ip: '8.8.8.8' },
+      geolocations: [
+        { object: '8.8.8.0/24', latitude: 0, longitude: 0, asn: 15169, aso: 'google llc' },
+      ],
+    });
+
+    const d = await analytics().getEntityDetails('ip-abc');
+
+    const geo = d.geolocations?.[0];
+    expect(geo).toBeDefined();
+    expect(geo?.latitude).toBe(0);
+    expect(geo?.asn).toBe(15169);
+    expect(geo?.aso).toBe('google llc');
+  });
+
+  it('nulls the geolocation detail fields when the API omits them', async () => {
+    respond({
+      attributes: { id: 'ip-abc', type: 'ip', ip: '8.8.8.8' },
+      geolocations: [{ latitude: 40.7128, longitude: -74.006, accuracy_radius: 500 }],
+    });
+
+    const d = await analytics().getEntityDetails('ip-abc');
+
+    const geo = d.geolocations?.[0];
+    expect(geo).toBeDefined();
+    expect(geo?.ip).toBeNull();
+    expect(geo?.city).toBeNull();
+    expect(geo?.country).toBeNull();
+    expect(geo?.asn).toBeNull();
+    expect(geo?.aso).toBeNull();
+  });
 });

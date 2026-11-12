@@ -121,10 +121,23 @@ function toGeolocations(raw: unknown): Geolocation[] | null {
         radius: pickNumber(g, 'radius', 'accuracy_radius') ?? 0,
         // The API labels the network a location belongs to as `object`.
         ip: (pick(g, 'ip', 'object') as string | undefined) ?? null,
+        city: pickStringOrNull(g, 'city'),
+        country: pickStringOrNull(g, 'country'),
+        asn: pickNumber(g, 'asn'),
+        aso: pickStringOrNull(g, 'aso'),
       };
     })
-    // Unresolved locations come back as 0,0 — not a real position.
-    .filter((g) => g.latitude !== 0 || g.longitude !== 0);
+    // A location with no coordinates (0,0) still carries network attribution —
+    // ASN/ASO and the object — so it is not empty and must not be dropped. Only
+    // a row that has none of those is worth filtering out.
+    .filter(
+      (g) =>
+        g.latitude !== 0 ||
+        g.longitude !== 0 ||
+        g.ip !== null ||
+        g.asn !== null ||
+        g.aso !== null,
+    );
   return locations.length > 0 ? locations : null;
 }
 

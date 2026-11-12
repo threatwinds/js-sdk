@@ -80,8 +80,14 @@ describe('ThreatWindsClient', () => {
   }
 
   describe('constructor', () => {
-    it('throws SDKError when no auth is provided', () => {
-      expect(() => new ThreatWindsClient({ baseUrl: 'https://api.test.com' })).toThrow(SDKError);
+    it('allows construction with no auth (unauthenticated / public tier)', () => {
+      // b91463b removed the auth-required guard: applyAuth omits headers when
+      // credentials are empty, enabling access to public endpoints at the lower
+      // unauthenticated rate limit. Construction must succeed, not throw.
+      const client = new ThreatWindsClient({ baseUrl: 'https://api.test.com' });
+      expect(client.apiKey).toBe('');
+      expect(client.apiSecret).toBe('');
+      expect(client.bearer).toBe('');
     });
 
     it('throws SDKError when both api key and bearer are provided', () => {

@@ -601,9 +601,15 @@ function toGeolocations(raw) {
       longitude: pickNumber(g, "longitude") ?? 0,
       radius: pickNumber(g, "radius", "accuracy_radius") ?? 0,
       // The API labels the network a location belongs to as `object`.
-      ip: pick(g, "ip", "object") ?? null
+      ip: pick(g, "ip", "object") ?? null,
+      city: pickStringOrNull(g, "city"),
+      country: pickStringOrNull(g, "country"),
+      asn: pickNumber(g, "asn"),
+      aso: pickStringOrNull(g, "aso")
     };
-  }).filter((g) => g.latitude !== 0 || g.longitude !== 0);
+  }).filter(
+    (g) => g.latitude !== 0 || g.longitude !== 0 || g.ip !== null || g.asn !== null || g.aso !== null
+  );
   return locations.length > 0 ? locations : null;
 }
 function toMetadata(raw) {
